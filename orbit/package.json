@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Orbit: uma assistente de IA pessoal numa ilha no topo da tela",
   "author": "Orbit",
+  "license": "GPL-3.0-only",
   "main": "main.js",
   "private": true,
   "scripts": {

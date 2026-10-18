@@ -21,3 +21,13 @@ Uma assistente de IA pessoal para Windows, numa ilha preta no topo da tela. Voc�
 3. Para testar sem instalar: `npm run beta` (usa o `.venv` do projeto e a pasta `%APPDATA%\Orbit Beta`).
 
 Os dados de quem usa (configuração, chaves, memórias) ficam em `%APPDATA%\Orbit Beta\dados` e nunca entram no git nem no instalador.
+
+## Créditos
+
+A ideia do Orbit, uma ilha no topo da tela que junta música, sistema, agenda e uso de IA, veio do **[Vorssaint](https://github.com/vorssaint/vorssaint-utils)**, um app de barra de menus para macOS feito por vorssaint. O Orbit é um projeto independente, escrito do zero para Windows: nenhum código, ícone ou arquivo do Vorssaint foi copiado. Algumas telas seguem o mesmo espírito (por exemplo, a aba de uso de IA em cartões e a leitura da cota do Claude Code a cada minuto). O nome, o ícone e a identidade visual do Vorssaint pertencem ao autor dele; se você gosta da ideia no Mac, use o original.
+
+Também usa: [Electron](https://www.electronjs.org/), [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [edge-tts](https://github.com/rany2/edge-tts), [Ollama](https://ollama.com/), a API do [Claude](https://www.anthropic.com/) e o [FFmpeg](https://ffmpeg.org/) (incluído no instalador pelo pacote imageio-ffmpeg).
+
+## Licença
+
+[GPL-3.0](LICENSE), a mesma do Vorssaint. Você pode usar, estudar, modificar e redistribuir o Orbit. Se distribuir uma versão modificada, ela também precisa ser GPL-3.0, com o código aberto. Para uma versão sua, dê outro nome e outro ícone.
