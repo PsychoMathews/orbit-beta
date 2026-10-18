@@ -1,0 +1,59 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "sexta feira",
+      "intents": [
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        {
+          "name": "PerguntaIntent",
+          "slots": [{ "name": "pergunta", "type": "TEXTO_LIVRE" }],
+          "samples": [
+            "{pergunta}",
+            "pergunta {pergunta}",
+            "me diz {pergunta}",
+            "me fala {pergunta}",
+            "quero saber {pergunta}"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "TEXTO_LIVRE",
+          "values": [
+            { "name": { "value": "como está meu computador" } },
+            { "name": { "value": "o que eu tenho amanhã" } },
+            { "name": { "value": "tenho algum e-mail novo" } },
+            { "name": { "value": "marca uma reunião sexta às três da tarde" } },
+            { "name": { "value": "anota que eu preciso pagar o aluguel dia dez" } },
+            { "name": { "value": "quem é você" } },
+            { "name": { "value": "bom dia" } },
+            { "name": { "value": "me lembra de ligar pro rafael amanhã" } },
+            { "name": { "value": "quanto de memória está livre" } },
+            { "name": { "value": "limpa os arquivos temporários" } },
+            { "name": { "value": "qual é minha agenda da semana" } },
+            { "name": { "value": "resume meus e-mails não lidos" } },
+            { "name": { "value": "o que você sabe sobre mim" } },
+            { "name": { "value": "fecha o chrome" } },
+            { "name": { "value": "abre a pasta downloads" } },
+            { "name": { "value": "tudo bem" } },
+            { "name": { "value": "obrigado" } },
+            { "name": { "value": "me conta uma coisa interessante" } },
+            { "name": { "value": "o que eu decidi sobre a netflix" } },
+            { "name": { "value": "preciso de ajuda com um projeto" } },
+            { "name": { "value": "quais são meus compromissos de hoje" } },
+            { "name": { "value": "manda um e-mail para o fulano dizendo que vou atrasar" } },
+            { "name": { "value": "o computador está lento" } },
+            { "name": { "value": "sim" } },
+            { "name": { "value": "não" } },
+            { "name": { "value": "pode fazer" } },
+            { "name": { "value": "repete" } },
+            { "name": { "value": "explica melhor" } }
+          ]
+        }
+      ]
+    }
+  }
+}

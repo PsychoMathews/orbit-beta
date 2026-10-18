@@ -1,0 +1,38 @@
+{
+  "name": "orbit",
+  "productName": "Orbit Beta",
+  "version": "0.1.0",
+  "description": "Orbit: uma assistente de IA pessoal numa ilha no topo da tela",
+  "author": "Orbit",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "beta": "set ORBIT_BETA=1&& electron .",
+    "dist": "node ../tools/preparar_beta.js && electron-builder --win nsis && node ../tools/preparar_beta.js --verificar"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.orbit.beta",
+    "productName": "Orbit Beta",
+    "copyright": "Orbit (beta)",
+    "directories": { "output": "../build/dist", "buildResources": "build-assets" },
+    "asar": false,
+    "files": ["main.js", "beta.js", "preload.js", "package.json", "island/**", "settings/**", "shared/**", "setup/**"],
+    "extraResources": [
+      { "from": "../build/core", "to": "core" },
+      { "from": "../build/python", "to": "python" }
+    ],
+    "win": { "target": "nsis", "icon": "build-assets/icon.png", "signAndEditExecutable": false },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": true,
+      "shortcutName": "Orbit Beta",
+      "runAfterFinish": true
+    }
+  }
+}

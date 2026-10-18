@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Orbit — Primeira configuração</title>
+<style>
+  :root { --bg: #0d0d0f; --card: #17171b; --line: #2a2a31; --text: #ececf1; --dim: #9a9aa6; --accent: #6f8cff; --ok: #3ecf8e; --bad: #ff6b6b; --warn: #ffb020; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 620px; margin: 0 auto; padding: 28px 24px 100px; }
+  .steps { display: flex; gap: 6px; margin-bottom: 22px; }
+  .steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+  .steps i.on { background: var(--accent); }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p.lead { color: var(--dim); margin: 0 0 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 4px; }
+  .card .hint { color: var(--dim); font-size: 13px; margin: 0 0 10px; }
+  label { display: block; font-size: 13px; color: var(--dim); margin: 10px 0 4px; }
+  input, select, textarea { width: 100%; background: #0f0f12; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit; }
+  textarea { min-height: 80px; resize: vertical; }
+  .row { display: flex; gap: 10px; align-items: end; }
+  .row > * { flex: 1; }
+  button { background: #24242b; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover { border-color: #444; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .res { margin-top: 8px; font-size: 13px; min-height: 18px; }
+  .res.ok { color: var(--ok); } .res.bad { color: var(--bad); } .res.wait { color: var(--warn); }
+  ol { margin: 6px 0 0 18px; padding: 0; color: var(--dim); font-size: 13px; }
+  ol li { margin: 3px 0; }
+  a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .pers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pers div { border: 1px solid var(--line); border-radius: 10px; padding: 10px; cursor: pointer; font-size: 13px; color: var(--dim); }
+  .pers div b { display: block; color: var(--text); font-size: 14px; }
+  .pers div.sel { border-color: var(--accent); background: #1b1f33; }
+  .nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 14px 24px; display: flex; justify-content: space-between; }
+  .nav > div { max-width: 620px; width: 100%; margin: 0 auto; display: flex; justify-content: space-between; }
+  section { display: none; } section.on { display: block; }
+  .tag { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; margin-left: 6px; font-weight: 400; }
+  @media (max-width: 560px) { .pers { grid-template-columns: 1fr; } .row { flex-direction: column; align-items: stretch; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="steps" id="steps"></div>
+
+  <section data-step="0">
+    <h1>Bem-vindo ao Orbit (beta)</h1>
+    <p class="lead">Em poucos passos você cria a sua assistente: nome, jeito de falar e voz. Ela roda no seu PC, com as suas contas.</p>
+    <div class="card">
+      <h2>Antes de começar</h2>
+      <ol>
+        <li>Para ela pensar, use uma <b>chave da API do Claude</b> (paga por uso, na sua conta) ou o <b>Ollama</b> (grátis, precisa de placa de vídeo boa). Pelo menos um dos dois.</li>
+        <li>Tenha microfone e caixas de som ou fone ligados.</li>
+        <li>Agenda/Gmail e Spotify são opcionais e podem ser ligados depois.</li>
+        <li>Seus dados e chaves ficam só neste PC.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section data-step="1">
+    <h1>Sua assistente</h1>
+    <p class="lead">Escolha como ela se chama e como fala com você.</p>
+    <div class="card">
+      <div class="row">
+        <div><label>Nome dela (ou dele)</label><input id="nome" placeholder="Ex.: Luna, Max, Iris" maxlength="30"></div>
+        <div style="flex:0 0 150px"><label>Ela ou ele?</label><select id="artigo"><option value="a">Ela (a Luna)</option><option value="o">Ele (o Max)</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>Seu nome</label><input id="usuario" placeholder="Como você quer ser chamado" maxlength="40"></div>
+        <div><label>Apelido carinhoso <span class="tag">opcional</span></label><input id="tratamento" placeholder="Ex.: chefe, parceiro" maxlength="20"></div>
+      </div>
+      <label>Uma linha sobre você <span class="tag">opcional</span></label><input id="sobre_linha" placeholder="Ex.: designer, mora em Curitiba" maxlength="80">
+    </div>
+    <div class="card">
+      <h2>Personalidade</h2>
+      <div class="pers" id="pers">
+        <div data-p="direta"><b>Direta</b>Profissional e calma. Vai ao ponto.</div>
+        <div data-p="calorosa"><b>Calorosa</b>Gentil e paciente, como uma amiga.</div>
+        <div data-p="bem-humorada"><b>Bem-humorada</b>Leve, com piadas curtas na hora certa.</div>
+        <div data-p="formal"><b>Formal</b>Cortês, como uma secretária executiva.</div>
+        <div data-p="propria" style="grid-column:1/-1"><b>Escrever a minha</b>Descreva do seu jeito.</div>
+      </div>
+      <textarea id="personalidade_texto" style="display:none;margin-top:10px" placeholder="Ex.: Sua personalidade: sarcástica mas prestativa, fala como um mordomo inglês..."></textarea>
+    </div>
+    <div class="card">
+      <h2>Sobre você <span class="tag">opcional</span></h2>
+      <p class="hint">Ela lê isto em toda conversa. Rotina, trabalho, gostos, o que ela deve lembrar.</p>
+      <textarea id="sobre" placeholder="Ex.: Trabalho de 9h às 18h. Tenho um cachorro chamado Bob. Prefiro respostas curtas."></textarea>
+    </div>
+  </section>
+
+  <section data-step="2">
+    <h1>Cérebro</h1>
+    <p class="lead">Configure pelo menos um. O Claude é o mais inteligente; o Ollama é grátis e roda no seu PC.</p>
+    <div class="card">
+      <h2>Claude (recomendado)</h2>
+      <ol>
+        <li>Abra <a data-url="https://console.anthropic.com/">console.anthropic.com</a> e crie uma conta.</li>
+        <li>Em <b>Billing</b>, adicione crédito (US$ 5 já dá para testar bastante) e defina um <b>limite de gasto mensal</b>.</li>
+        <li>Em <b>API Keys</b>, clique em <b>Create Key</b>, copie e cole abaixo.</li>
+      </ol>
+      <p class="hint" style="margin-top:8px">É diferente da assinatura do Claude.ai: aqui você paga só o que usar.</p>
+      <label>Chave da API</label><input id="claudeKey" placeholder="sk-ant-..." spellcheck="false">
+      <div class="row">
+        <div><label>Modelo</label><select id="claudeModel">
+          <option value="claude-sonnet-5-5">Sonnet 5.5 (equilibrado, recomendado)</option>
+          <option value="claude-haiku-5-5">Haiku 5.5 (mais rápido e barato)</option>
+          <option value="claude-opus-5-5">Opus 5.5 (mais inteligente e caro)</option>
+        </select></div>
+        <div style="flex:0 0 auto"><button id="tClaude">Testar</button></div>
+      </div>
+      <div class="res" id="rClaude"></div>
+    </div>
+    <div class="card">
+      <h2>Ollama <span class="tag">opcional</span></h2>
+      <ol>
+        <li>Baixe em <a data-url="https://ollama.com/download">ollama.com/download</a> e instale.</li>
+        <li>No terminal, rode <b>ollama pull qwen3:8b</b> (precisa de placa de vídeo com 8 GB).</li>
+      </ol>
+      <div class="row">
+        <div><label>Modelo</label><select id="ollamaModel"><option value="qwen3:8b">qwen3:8b</option></select></div>
+        <div style="flex:0 0 auto"><button id="tOllama">Procurar Ollama</button></div>
+      </div>
+      <div class="res" id="rOllama"></div>
+    </div>
+  </section>
+
+  <section data-step="3">
+    <h1>Voz</h1>
+    <p class="lead">A voz da Microsoft é grátis. A ElevenLabs é mais natural, mas paga.</p>
+    <div class="card">
+      <h2>Voz da Microsoft (grátis)</h2>
+      <div class="row">
+        <div><label>Voz</label><select id="edgeVoice">
+          <option value="pt-BR-FranciscaNeural">Francisca (feminina)</option>
+          <option value="pt-BR-ThalitaMultilingualNeural">Thalita (feminina)</option>
+          <option value="pt-BR-AntonioNeural">Antonio (masculina)</option>
+          <option value="pt-BR-MacerioMultilingualNeural">Macerio (masculina)</option>
+        </select></div>
+        <div style="flex:0 0 auto"><button id="tVoz">Ouvir</button></div>
+      </div>
+      <div class="res" id="rVoz"></div>
+    </div>
+    <div class="card">
+      <h2>ElevenLabs <span class="tag">opcional</span></h2>
+      <ol>
+        <li>Crie a conta em <a data-url="https://elevenlabs.io/">elevenlabs.io</a>.</li>
+        <li>Clique no seu perfil → <b>API Keys</b> → crie uma chave e cole abaixo.</li>
+        <li>Adicione vozes na <b>Voice Library</b> para elas aparecerem aqui.</li>
+      </ol>
+      <div class="row">
+        <div><label>Chave da ElevenLabs</label><input id="elevenKey" placeholder="sk_..." spellcheck="false"></div>
+        <div style="flex:0 0 auto"><button id="tEleven">Testar</button></div>
+      </div>
+      <label>Voz da ElevenLabs</label><select id="elevenVoice"><option value="">(teste a chave para listar)</option></select>
+      <div class="res" id="rEleven"></div>
+    </div>
+  </section>
+
+  <section data-step="4">
+    <h1>Detalhes</h1>
+    <p class="lead">Dá para mudar depois, refazendo esta configuração pelo ícone do Orbit na bandeja.</p>
+    <div class="card">
+      <div class="row">
+        <div><label>Atalho para falar</label><select id="hotkey">
+          <option value="ctrl+alt+space">Ctrl + Alt + Espaço</option>
+          <option value="ctrl+alt+f">Ctrl + Alt + F</option>
+          <option value="ctrl+shift+space">Ctrl + Shift + Espaço</option>
+          <option value="alt+q">Alt + Q</option>
+        </select></div>
+        <div><label>Sua cidade (para o clima)</label><input id="cidade" placeholder="São Paulo"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Agenda e Gmail do Google <span class="tag">opcional</span></h2>
+      <p class="hint">Passo mais trabalhoso: você cria um "app" seu no Google. Leva uns 10 minutos.</p>
+      <ol>
+        <li>Abra <a data-url="https://console.cloud.google.com/projectcreate">console.cloud.google.com</a> e crie um projeto (qualquer nome).</li>
+        <li>Ative a <a data-url="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com">Google Calendar API</a> e a <a data-url="https://console.cloud.google.com/apis/library/gmail.googleapis.com">Gmail API</a>.</li>
+        <li>Em <a data-url="https://console.cloud.google.com/auth/overview">Google Auth Platform</a>, configure: tipo <b>Externo</b>, seu e-mail como contato, e adicione <b>seu e-mail em "Público-alvo → Usuários de teste"</b>.</li>
+        <li>Em <b>Clientes</b>, crie um cliente do tipo <b>App para computador</b> e baixe o JSON.</li>
+        <li>Clique abaixo, escolha o arquivo e faça login. O Google vai avisar que o app não é verificado: é o seu próprio app, pode continuar.</li>
+      </ol>
+      <div style="margin-top:10px"><button id="tGoogle">Escolher arquivo e conectar</button></div>
+      <div class="res" id="rGoogle"></div>
+    </div>
+    <div class="card">
+      <h2>Spotify <span class="tag">opcional</span></h2>
+      <p class="hint">Depois de concluir, vá em Configurações → Spotify no Orbit. A aba Música já funciona sem isso com qualquer player.</p>
+    </div>
+  </section>
+
+  <section data-step="5">
+    <h1>Tudo pronto</h1>
+    <p class="lead" id="resumo"></p>
+    <div class="card">
+      <h2>Como usar</h2>
+      <ol>
+        <li>A ilha preta no topo da tela é o Orbit. Passe o mouse para abrir as abas.</li>
+        <li>Aperte <b id="hk"></b>, espere o bipe e fale. Ou digite na aba dela.</li>
+        <li>Na primeira vez que você falar, ela baixa o reconhecimento de voz (uns 500 MB). Pode demorar alguns minutos.</li>
+        <li>Botão direito no ícone do anel, perto do relógio: menu e "Refazer configuração".</li>
+      </ol>
+    </div>
+    <div class="res" id="rSave"></div>
+  </section>
+</div>
+<div class="nav"><div>
+  <button id="back">Voltar</button>
+  <button id="next" class="primary">Começar</button>
+</div></div>
+<script src="setup.js"></script>
+</body>
+</html>

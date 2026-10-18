@@ -1,0 +1,27 @@
+.env
+.venv/
+__pycache__/
+credentials.json
+token.json
+models/
+memoria/
+*.wav
+*.mp3
+node_modules/
+dist/
+*.log
+*.sqlite
+spotify*.json
+voz-da-friday-guia-para-o-alfred.md
+/assistente.json
+build/
+
+# Documentos pessoais do projeto (rotina da Sexta-feira): ficam só no PC.
+GUIA-SEXTA-FEIRA.md
+CHECKLIST-ORBIT.md
+NOTAS-SESSAO-DESIGN.md
+
+# Termos pessoais do verificador de vazamento (só local).
+.verificar_local.txt
+# Plano interno do projeto (cita a configuração pessoal): só local.
+PLANO-BETA.md

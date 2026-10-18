@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Orbit — Configurações</title>
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <header class="drag"><span class="logo"></span>Orbit <span class="sub">Configurações</span></header>
+  <div class="wrap">
+    <nav id="nav">
+      <button data-page="recursos" class="on"><span data-ico="spark"></span>Recursos</button>
+      <button data-page="ilha"><span data-ico="pin"></span>Ilha</button>
+      <button data-page="sexta"><span data-ico="mic"></span>%nome%</button>
+      <button data-page="permissoes"><span data-ico="bolt"></span>Permissões</button>
+      <button data-page="sobre"><span data-ico="inbox"></span>Sobre</button>
+    </nav>
+    <main>
+      <section id="recursos" class="page on">
+        <h1>Recursos</h1>
+        <p class="lead">Ligue só o que você usa. Recursos desligados somem da ilha e param de rodar. Use as setas para mudar a ordem das abas.</p>
+        <div class="presets">
+          <button data-preset="tudo">Tudo</button>
+          <button data-preset="edicao">Edição de vídeo</button>
+          <button data-preset="minimo">Mínimo</button>
+        </div>
+        <div id="features" class="features"></div>
+      </section>
+
+      <section id="ilha" class="page">
+        <h1>Ilha</h1>
+        <p class="lead">Como a ilha se comporta no topo da tela.</p>
+        <div class="group" id="island-opts"></div>
+      </section>
+
+      <section id="sexta" class="page">
+        <h1>%nome%</h1>
+        <p class="lead">A IA integrada. Ela também conversa com a ilha: pode mostrar textos e criar timers quando você pede por voz, Telegram ou Alexa.</p>
+        <div class="group" id="friday-opts"></div>
+        <div class="hint">Experimente: “%nome%, timer de 10 minutos pro café” ou “mostra na tela a lista do que eu tenho amanhã”.</div>
+      </section>
+
+      <section id="permissoes" class="page">
+        <h1>Permissões</h1>
+        <p class="lead">O que o Orbit e %a% acessam no seu PC e na internet, para quê, e quais recursos usam cada acesso. Desligue um recurso em <b>Recursos</b> e o acesso dele para de ser usado.</p>
+        <h2 style="margin:22px 0 8px;font-size:15px">Contas conectadas</h2>
+        <div class="group" id="accounts"></div>
+        <h2 style="margin:22px 0 8px;font-size:15px">Acessos</h2>
+        <div class="group" id="perms"></div>
+      </section>
+
+      <section id="sobre" class="page">
+        <h1>Sobre</h1>
+        <p class="lead">Orbit é a cara %da% no Windows: uma ilha no topo da tela com música, sistema, agenda, timers, DaVinci, uso de IA e mais, tudo modular.</p>
+        <div class="group">
+          <div class="opt"><div><b>Dados</b><span>Tudo fica no seu PC. A ilha só conversa com o bot em 127.0.0.1.</span></div></div>
+          <div class="opt"><div><b>Inspiração</b><span>A ideia vem do vorssaint-utils (macOS). Nenhum código dele foi copiado.</span></div></div>
+          <div class="opt"><div><b>Exportar configurações</b><span>Salva recursos, ordem das abas, cores e opções da ilha num arquivo. Não leva conversas, notas nem contas.</span></div><button class="btn" id="export">Exportar</button></div>
+          <div class="opt"><div><b>Importar configurações</b><span>Carrega um arquivo exportado (seu, de outro PC ou de um amigo).</span></div><button class="btn" id="import">Importar</button></div>
+          <div class="opt"><div><b>Restaurar padrões</b><span>Volta todas as opções do Orbit para o início.</span></div><button class="btn" id="reset">Restaurar</button></div>
+        </div>
+      </section>
+    </main>
+  </div>
+<script src="../shared/catalog.js"></script>
+<script src="../shared/icons.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>
