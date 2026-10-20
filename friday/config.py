@@ -44,6 +44,8 @@ CLOUD_MODEL = os.getenv("CLOUD_MODEL", "claude-opus-5-5")
 # Profundidade do raciocínio: low (mais rápido) a high. Pesquisa sempre pode buscar na internet.
 CLOUD_EFFORT = os.getenv("CLOUD_EFFORT", "low")
 # Onde a nuvem responde: "pc" (só a voz do PC) ou "pc,telegram,alexa".
+# Quem é o cérebro na nuvem: "plano" (Claude Code na conta do usuário, sem custo extra) ou "api" (cobrada à parte).
+CLOUD_BACKEND = os.getenv("CLOUD_BACKEND", "plano")
 CLOUD_CHANNELS = {c.strip() for c in os.getenv("CLOUD_CHANNELS", "pc").split(",") if c.strip()}
 # Trânsito: chave da TomTom (developer.tomtom.com, grátis) e lugares salvos (casa=Rua X, 10;trabalho=Av. Y, 200).
 TOMTOM_API_KEY = os.getenv("TOMTOM_API_KEY", "")

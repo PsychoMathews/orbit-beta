@@ -1,6 +1,6 @@
 """Memória permanente da Friday.
 
-A verdade mora em arquivos .md que você pode abrir e editar (pasta memoria/).
+A verdade mora em arquivos .md que você pode abrir e editar: o cofre do Obsidian (vault.py) e memoria/log/.
 O SQLite/FTS5 é só um índice de busca: se estragar, apague memoria/indice.sqlite que ele se reconstrói.
 Regra do log: nunca apagar; erro se corrige com uma entrada nova.
 """
@@ -13,12 +13,12 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from .paths import MEMORIA
-from . import assistente
+from . import assistente, vault
 
 TZ = ZoneInfo("America/Sao_Paulo")
 ROOT = MEMORIA
-SOBRE_MIM = ROOT / "SOBRE_MIM.md"
-INBOX = ROOT / "INBOX.md"
+SOBRE_MIM = vault.EU  # "Eu.md" no cofre do Obsidian
+INBOX = vault.INBOX
 LOG_DIR = ROOT / "log"
 INDEX = ROOT / "indice.sqlite"
 CONVERSA = ROOT / ".conversa.json"
@@ -47,15 +47,12 @@ SOBRE_MIM_TEMPLATE = """# Sobre mim
 
 def setup() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    if not SOBRE_MIM.exists():
-        SOBRE_MIM.write_text(SOBRE_MIM_TEMPLATE.format(nome=assistente.com_artigo(True), usuario=assistente.USUARIO), encoding="utf-8")
-    if not INBOX.exists():
-        INBOX.write_text("# Inbox\n\n> Ideias e coisas soltas para triar depois.\n\n", encoding="utf-8")
+    vault.setup()
     rebuild_index()
 
 
 def profile() -> str:
-    return SOBRE_MIM.read_text(encoding="utf-8") if SOBRE_MIM.exists() else ""
+    return vault.core()
 
 
 def recent_log(n: int = 15) -> str:
@@ -115,10 +112,11 @@ def rebuild_index() -> None:
     with _lock:
         INDEX.unlink(missing_ok=True)
         con = _db()
-        for f in [SOBRE_MIM, INBOX, *sorted(LOG_DIR.glob("*.md"))]:
+        notes = [f for f in vault.VAULT.rglob("*.md") if ".obsidian" not in f.parts]
+        for f in [*notes, *sorted(LOG_DIR.glob("*.md"))]:
             if not f.exists():
                 continue
-            rel = f.relative_to(ROOT).as_posix()
+            rel = f.relative_to(vault.VAULT).as_posix() if vault.VAULT in f.parents else f.relative_to(ROOT).as_posix()
             for line in f.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if not line or line.startswith(("#", ">")):
@@ -128,12 +126,27 @@ def rebuild_index() -> None:
                 _index_line(rel, data, texto, con)
         con.commit()
         con.close()
+    global _indexed_at
+    _indexed_at = _vault_mtime()
+
+
+_indexed_at = 0.0
+
+
+def _vault_mtime() -> float:
+    """Última alteração no cofre (ele edita no Obsidian; a revisão da noite também escreve)."""
+    try:
+        return max((f.stat().st_mtime for f in vault.VAULT.rglob("*.md")), default=0.0)
+    except Exception:
+        return 0.0
 
 
 def search(query: str, limit: int = 8) -> str:
     words = re.findall(r"\w+", _norm(query))
     if not words:
         return "Busca vazia."
+    if _vault_mtime() > _indexed_at:  # mexeram no cofre desde a última indexação
+        rebuild_index()
     # OR entre palavras + prefixo, para tolerar plural e palavra incompleta; o BM25 ordena por relevância.
     fts = " OR ".join(f'"{w}"*' for w in words if len(w) > 2) or " OR ".join(f'"{w}"*' for w in words)
     with _lock:
@@ -159,3 +172,6 @@ def load_conversation() -> dict[int, list]:
 def save_conversation(history: dict) -> None:
     data = {str(k): list(v) for k, v in history.items()}
     CONVERSA.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    for chat_id, msgs in history.items():
+        if chat_id > 0:  # -1 = pedidos internos (avisos), não são conversa dele
+            vault.log_exchange(chat_id, msgs)

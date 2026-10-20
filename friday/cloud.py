@@ -2,7 +2,7 @@
 
 Comandos simples (timer, lembrete, música...) continuam no caminho rápido do brain.py, sem passar por aqui.
 O modelo recebe todas as ferramentas da assistente e decide sozinho o que consultar (clima, trânsito, internet, agenda).
-Ações que mudam algo continuam passando pelo botão de confirmação (tools.run cuida disso).
+Só ações destrutivas ou e-mail a terceiros passam pelo botão de confirmação (tools.run cuida disso).
 """
 import asyncio
 import json
@@ -38,7 +38,9 @@ Responda no seu estilo, curto e natural.
 - Alarme: é um timer até um horário do relógio ("me acorda às 7"). Use timer_start com os minutos até a hora.
 - Lembrete (add_reminder/list_reminders/cancel_reminder): aviso com assunto em data/hora ("me lembra amanhã às 9
   de ligar pro cliente"). Diferente de timer: tem assunto e pode ser em outro dia.
-- Evento na agenda (create_event): compromisso no Google Agenda; precisa de confirmação no botão do Telegram.
+- Evento na agenda (create_event): compromisso no Google Agenda; criado direto.
+- Links: download_video (baixa em Downloads), analyze_link (relatório + notas + e-mail). Ideias: save_idea. E-mail para ele mesmo: email_me (aceita anexo).
+- Arquivos e tela do PC: send_file (manda o arquivo no Telegram, até 50 MB), screenshot (print da tela; para mostrar uma pasta, open_path antes). Ele pode estar longe do PC: você é o acesso dele.
 - Listas (list_add/list_show/list_remove/list_clear): itens soltos, como compras ou tarefas.
   Bloco de notas (note_add/note_read): texto livre da ilha.
 - Memória (remember/search_memory): fatos sobre o usuário que valem para sempre. Nunca use para timer, lista,
@@ -49,7 +51,7 @@ Responda no seu estilo, curto e natural.
   (game_mode), tema claro/escuro (theme), energia e PC acordado (keep_awake, power_*), limpeza (cleanup_*,
   autoclean_set), saída de som e microfone (audio_output, mic_mute), achar arquivo pelo nome (find_files, depois
   open_path). Contas e conversões: sempre calculate, nunca de cabeça.
-- DaVinci: status e render (resolve_*); edições vão para o Claude (claude_davinci, com botão).
+- DaVinci: status e render (resolve_*); edições vão para o Claude (claude_davinci).
   Tarefas pesadas de texto ou pesquisa: claude_think. Cota do Claude: claude_quota (dado real; remind=true marca
   o aviso). Nunca invente horário de reset.
 - Ilha (Orbit): a barra no topo da tela que mostra timers, música, agenda e avisos (island_show para exibir algo).
@@ -63,7 +65,12 @@ _client: anthropic.AsyncAnthropic | None = None
 
 
 def available(channel: str) -> bool:
-    return bool(config.ANTHROPIC_API_KEY) and channel in config.CLOUD_CHANNELS
+    if channel not in config.CLOUD_CHANNELS:
+        return False
+    if config.CLOUD_BACKEND == "plano":
+        from . import plan
+        return plan.available()
+    return bool(config.ANTHROPIC_API_KEY)
 
 
 def _tools(with_google: bool) -> list:
@@ -100,6 +107,9 @@ def _history(history) -> list:
 
 async def ask(system: str, history, text: str, with_google: bool, note: str = "") -> tuple[str, set, list]:
     """Retorna (resposta, ferramentas usadas, ids de ações pendentes)."""
+    if config.CLOUD_BACKEND == "plano":
+        from . import plan
+        return await plan.ask(system + RULES, history, text, with_google, note)
     global _client
     if _client is None:
         _client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY, timeout=90, max_retries=1)
@@ -111,7 +121,10 @@ async def ask(system: str, history, text: str, with_google: bool, note: str = ""
     messages.append({"role": "user", "content": user})
     used, new_pending = set(), []
     response = None
+    spent = {"in": 0, "write": 0, "read": 0, "out": 0, "rounds": 0}  # soma de TODAS as rodadas, para o log
     for _ in range(MAX_ROUNDS):
+        if response is not None and response.usage:
+            _add_usage(spent, response.usage)
         response = await _client.beta.messages.create(
             model=config.CLOUD_MODEL, max_tokens=4000, system=system + RULES, messages=messages,
             tools=tool_defs, output_config={"effort": config.CLOUD_EFFORT},
@@ -145,8 +158,24 @@ async def ask(system: str, history, text: str, with_google: bool, note: str = ""
         if b.type == "server_tool_use":
             used.add(b.name)
     reply = " ".join(b.text for b in (response.content if response else []) if b.type == "text").strip()
-    u = response.usage if response else None
-    if u:
-        log.info("Nuvem: %s, entrada %s (cache %s), saída %s", response.model, u.input_tokens,
-                 u.cache_read_input_tokens, u.output_tokens)
+    if response is not None and response.usage:
+        _add_usage(spent, response.usage)
+        price = PRICES.get(response.model.split("-202")[0], PRICES["claude-opus-5-5"])
+        cost = (spent["in"] * price[0] + spent["write"] * price[0] * 1.25 + spent["read"] * price[2]
+                + spent["out"] * price[1]) / 1e6
+        log.info("Nuvem: %s, %d rodada(s), entrada %d, cache gravado %d, cache lido %d, saída %d, ~US$ %.4f",
+                 response.model, spent["rounds"], spent["in"], spent["write"], spent["read"], spent["out"], cost)
     return reply, used, new_pending
+
+
+# US$ por milhão de tokens: (entrada, saída, cache lido). Gravar no cache custa 1,25x a entrada.
+PRICES = {"claude-opus-5-5": (4.0, 20.0, 0.20), "claude-sonnet-5-5": (2.0, 10.0, 0.20),
+          "claude-haiku-5-5": (0.10, 0.50, 0.01)}
+
+
+def _add_usage(spent: dict, u) -> None:
+    spent["in"] += u.input_tokens or 0
+    spent["write"] += getattr(u, "cache_creation_input_tokens", 0) or 0
+    spent["read"] += u.cache_read_input_tokens or 0
+    spent["out"] += u.output_tokens or 0
+    spent["rounds"] += 1

@@ -43,9 +43,58 @@ def _parse_when(when: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=TZ)
 
 
+# ---------- Repetição (como no Google Agenda) ----------
+# repeat: "" (uma vez), "diario", "dias_uteis", "semanal", "mensal" ou dias da semana "seg,qua,sex".
+_WD = {"seg": 0, "ter": 1, "qua": 2, "qui": 3, "sex": 4, "sab": 5, "sáb": 5, "dom": 6}
+_WD_NOMES = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
+
+
+def _repeat_norm(repeat: str) -> str | None:
+    """Padroniza; None = inválido."""
+    raw = _norm(repeat or "").strip()
+    r = raw.replace(" ", "").replace("-", "_")
+    if r in ("", "nao", "nunca", "umavez"):
+        return ""
+    if r in ("diario", "tododia", "todososdias"):
+        return "diario"
+    if r in ("dias_uteis", "diasuteis", "seg_sex", "segasex"):
+        return "dias_uteis"
+    if r in ("semanal", "todasemana", "toda_semana"):
+        return "semanal"
+    if r in ("mensal", "todomes"):
+        return "mensal"
+    days = [d.strip()[:3] for d in re.split(r"\s*(?:,|;|/|\be\b)\s*", raw) if d.strip()]
+    return ",".join(dict.fromkeys(days)) if days and all(d in _WD for d in days) else None
+
+
+def _next(dt: datetime, repeat: str) -> datetime:
+    if repeat == "diario":
+        return dt + timedelta(days=1)
+    if repeat == "semanal":
+        return dt + timedelta(weeks=1)
+    if repeat == "mensal":
+        month = dt.month % 12 + 1
+        year = dt.year + (dt.month == 12)
+        for day in (dt.day, 30, 29, 28):  # dia 31 vira o último dia do mês
+            try:
+                return dt.replace(year=year, month=month, day=day)
+            except ValueError:
+                continue
+    days = {0, 1, 2, 3, 4} if repeat == "dias_uteis" else {_WD[d] for d in repeat.split(",")}
+    nxt = dt + timedelta(days=1)
+    while nxt.weekday() not in days:
+        nxt += timedelta(days=1)
+    return nxt
+
+
+def _repeat_label(repeat: str) -> str:
+    return {"": "", "diario": "todo dia", "dias_uteis": "de segunda a sexta", "semanal": "toda semana",
+            "mensal": "todo mês"}.get(repeat, "toda " + ", ".join(repeat.split(",")))
+
+
 # ---------- Ferramentas (a IA usa) ----------
 
-def add_reminder(text: str, when: str = "", in_minutes: int = 0) -> str:
+def add_reminder(text: str, when: str = "", in_minutes: int = 0, repeat: str = "") -> str:
     try:
         dt = datetime.now(TZ) + timedelta(minutes=int(in_minutes)) if in_minutes else _parse_when(when)
     except (ValueError, TypeError):
@@ -54,11 +103,37 @@ def add_reminder(text: str, when: str = "", in_minutes: int = 0) -> str:
         dt = dt.replace(year=datetime.now(TZ).year)
     if dt < datetime.now(TZ) - timedelta(minutes=1):
         return "Esse horário já passou. Peça outro horário ao usuário."
+    rep_ = _repeat_norm(repeat)
+    if rep_ is None:
+        return f"Repetição inválida: {repeat}. Use diario, dias_uteis, semanal, mensal ou dias como 'seg,qua,sex'."
+    if rep_ and rep_ not in ("diario", "semanal", "mensal", "dias_uteis") and dt.weekday() not in {_WD[d] for d in rep_.split(",")}:
+        dt = _next(dt - timedelta(days=1), rep_)  # primeiro dia que bate com os dias pedidos
     items = _load(REMINDERS, [])
     rid = uuid.uuid4().hex[:6]
-    items.append({"id": rid, "text": text, "when": dt.isoformat(), "done": False})
+    items.append({"id": rid, "text": text, "when": dt.isoformat(), "done": False, "repeat": rep_})
     _save(REMINDERS, items)
-    return f"Lembrete criado para {dt:%d/%m às %H:%M}: {text}. (Lembrete não precisa de confirmação.)"
+    if rep_:
+        return f"Lembrete criado para {dt:%d/%m às %H:%M}, repetindo {_repeat_label(rep_)}: {text}. (id={rid})"
+    return (f"Lembrete criado para {dt:%d/%m às %H:%M}: {text}. (id={rid}) Se for algo que costuma se repetir"
+            " (treino, reunião, aula, conta, remédio), pergunte se ele quer que repita e, se sim, use reminder_repeat.")
+
+
+def reminder_repeat(reminder: str, repeat: str) -> str:
+    """Muda a repetição de um lembrete que já existe (id ou palavra do texto). repeat vazio = só uma vez."""
+    rep_ = _repeat_norm(repeat)
+    if rep_ is None:
+        return f"Repetição inválida: {repeat}. Use diario, dias_uteis, semanal, mensal ou dias como 'seg,qua,sex'."
+    items = _load(REMINDERS, [])
+    q = _norm(reminder)
+    words = [w for w in re.findall(r"\w+", q) if len(w) > 2 and w != "lembrete"]
+    hits = [r for r in items if not r["done"] and (r["id"] == reminder or (words and all(w in _norm(r["text"]) for w in words)))]
+    if not hits:
+        return "Nenhum lembrete pendente com isso. Use list_reminders para ver os que existem."
+    for r in hits:
+        r["repeat"] = rep_
+    _save(REMINDERS, items)
+    how = f"repetindo {_repeat_label(rep_)}" if rep_ else "só uma vez"
+    return "Pronto, " + how + ": " + "; ".join(r["text"] for r in hits)
 
 
 def list_reminders() -> str:
@@ -66,7 +141,8 @@ def list_reminders() -> str:
     if not items:
         return "Nenhum lembrete pendente."
     items.sort(key=lambda r: r["when"])
-    return "\n".join(f"- id={r['id']} | {_parse_when(r['when']):%d/%m %H:%M} | {r['text']}" for r in items)
+    return "\n".join(f"- id={r['id']} | {_parse_when(r['when']):%d/%m %H:%M} | {r['text']}"
+                     + (f" | repete {_repeat_label(r['repeat'])}" if r.get("repeat") else "") for r in items)
 
 
 def _norm(s: str) -> str:
@@ -88,14 +164,22 @@ def cancel_reminder(reminder: str) -> str:
     return "Cancelado: " + "; ".join(f"{r['text']} ({_parse_when(r['when']):%d/%m %H:%M})" for r in hits)
 
 
-TOOLS = {"add_reminder": add_reminder, "list_reminders": list_reminders, "cancel_reminder": cancel_reminder}
+TOOLS = {"add_reminder": add_reminder, "list_reminders": list_reminders, "cancel_reminder": cancel_reminder,
+         "reminder_repeat": reminder_repeat}
 SCHEMAS = [
     fn("add_reminder", "Cria um lembrete: no horário, a Friday avisa o usuário por voz e no Telegram."
        " Use para 'me lembra de...', 'me avisa às...'.", {
            "text": {"type": "string", "description": "O que lembrar, do jeito que será dito ao usuário"},
            "when": {"type": "string", "description": "Data e hora ISO, ex. 2026-10-18T18:00"},
            "in_minutes": {"type": "integer", "description": "Para 'daqui a X': minutos a partir de agora (2 horas = 120)"},
+           "repeat": {"type": "string", "description": "Repetição: vazio (uma vez), diario, dias_uteis, semanal,"
+                      " mensal, ou dias da semana 'seg,qua,sex'. Só use se ele disse que repete."},
        }, ["text"]),
+    fn("reminder_repeat", "Faz um lembrete existente se repetir (ou parar de repetir). Use depois que ele confirmar"
+       " que o lembrete se repete.", {
+           "reminder": {"type": "string", "description": "id ou palavra-chave do lembrete"},
+           "repeat": {"type": "string", "description": "diario, dias_uteis, semanal, mensal, 'seg,qua,sex' ou vazio"},
+       }, ["reminder", "repeat"]),
     fn("list_reminders", "Lista os lembretes pendentes.", {}),
     fn("cancel_reminder", "Cancela lembrete(s) pelo id ou por uma palavra do texto, ex. 'Rafael'.", {
         "reminder": {"type": "string", "description": "id ou palavra-chave do lembrete"},
@@ -157,7 +241,13 @@ async def _due_reminders(now: datetime, notify) -> None:
     fired = False
     for r in items:
         if not r["done"] and _parse_when(r["when"]) <= now:
-            r["done"] = True
+            if r.get("repeat"):  # repete: agenda a próxima (pula as que passaram com o PC desligado)
+                nxt = _parse_when(r["when"])
+                while nxt <= now:
+                    nxt = _next(nxt, r["repeat"])
+                r["when"] = nxt.isoformat()
+            else:
+                r["done"] = True
             fired = True
             oque = respostas.assunto(r["text"])
             await notify(f"⏰ Lembrete: {r['text']}", respostas.fala("lembrete_fim", oque=oque) if oque

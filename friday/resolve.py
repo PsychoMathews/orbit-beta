@@ -148,13 +148,13 @@ def describe(name: str, a: dict) -> str | None:
 
 SCHEMAS = [
     fn("resolve_status", "DaVinci Resolve: projeto aberto, se está renderizando e a fila de render com progresso.", {}),
-    fn("resolve_start_render", "Inicia o render da fila do DaVinci Resolve (o usuário confirma).", {}),
+    fn("resolve_start_render", "Inicia o render da fila do DaVinci Resolve.", {}),
     fn("create_project_folders", "Cria a estrutura de pastas de um projeto de vídeo novo no padrão do usuário.", {
         "name": {"type": "string", "description": "Nome do projeto, ex.: 'CLIENTE X 20.10.2026'"},
         "base": {"type": "string", "description": "Pasta base; vazio = padrão"},
     }, ["name"]),
     fn("backup_folder", "Faz backup de uma pasta (ex.: o material de um projeto) para o disco de backup. Só copia,"
-       " nunca apaga (o usuário confirma).", {
+       " nunca apaga.", {
            "source": {"type": "string", "description": "Caminho completo da pasta"},
            "dest": {"type": "string", "description": "Destino; vazio = pasta de backup padrão"},
        }, ["source"]),

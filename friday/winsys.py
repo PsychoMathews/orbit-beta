@@ -3,7 +3,7 @@
 Energia
 - Manter acordado (por X min, até o render do DaVinci acabar, ou até desligar), sem mexer nas configurações do Windows.
 - Dormir/desligar a tela após X min (powercfg, na tomada) e plano de energia (Equilibrado, Alto desempenho...).
-- Desligar/reiniciar agendado ou quando o render acabar (a IA só agenda com confirmação no Telegram).
+- Desligar/reiniciar agendado ou quando o render acabar (a IA agenda direto; dá para cancelar).
 Limpeza
 - Varredura de lixo regenerável (temporários, cache de render do DaVinci, caches de navegador) e instaladores velhos.
 - Caches e temporários são apagados de vez (o programa recria); instaladores vão para a Lixeira.
@@ -734,7 +734,7 @@ SCHEMAS = [
     fn("power_plan", "Lista ou troca o plano de energia do Windows (ex.: 'alto desempenho' para renderizar, 'equilibrado').", {
         "name": {"type": "string", "description": "Vazio = listar"},
     }),
-    fn("schedule_shutdown", "Agenda desligar ou reiniciar o PC daqui a X minutos ou quando o render do DaVinci terminar (o usuário confirma).", {
+    fn("schedule_shutdown", "Agenda desligar ou reiniciar o PC daqui a X minutos ou quando o render do DaVinci terminar.", {
         "action": {"type": "string", "enum": ["shutdown", "restart"]},
         "minutes": {"type": "number"}, "after_render": {"type": "boolean"},
     }, ["action"]),

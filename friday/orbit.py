@@ -22,6 +22,7 @@ from pathlib import Path
 import json
 import logging
 import os
+import secrets
 import time
 from datetime import datetime, timedelta
 
@@ -105,6 +106,28 @@ async def _guard(request: web.Request, handler):
     if request.headers.get("X-Orbit") != "1" or request.headers.get("Origin"):
         return web.Response(status=403)
     return await handler(request)
+
+
+# Ferramentas da Friday para o Claude Code (cérebro pelo plano): o servidor MCP (friday/mcp_server.py) chama esta
+# rota. Senha nova a cada início, passada só para o processo do Claude; sem ela a rota recusa.
+TOOL_TOKEN = secrets.token_hex(16)
+tool_calls: list[str] = []  # nomes chamados na pergunta atual (o cérebro zera antes de cada uma)
+
+
+async def tool(request: web.Request) -> web.Response:
+    from . import tools
+    if not secrets.compare_digest(request.headers.get("X-Friday-Token", ""), TOOL_TOKEN):
+        return web.Response(status=403)
+    body = await request.json()
+    name, args = body.get("name", ""), body.get("args") or {}
+    tool_calls.append(name)
+    log.info("Ferramenta (plano): %s %s", name, json.dumps(args, ensure_ascii=False)[:300])
+    try:
+        result = await asyncio.to_thread(tools.run, name, dict(args))
+    except Exception as e:
+        log.exception("Erro na ferramenta %s", name)
+        result = f"Erro ao usar {name}: {e}"
+    return web.json_response({"result": f"<dado_externo>\n{result}\n</dado_externo>"})
 
 
 async def events(request: web.Request) -> web.StreamResponse:
@@ -684,6 +707,7 @@ async def start(send_to_telegram=None) -> None:
     app.router.add_post("/orbit/trigger", trigger)
     app.router.add_post("/orbit/mute", mute)
     app.router.add_post("/orbit/ask", ask)
+    app.router.add_post("/orbit/tool", tool)
     app.router.add_get("/orbit/media", media_get)
     app.router.add_post("/orbit/media/{action}", media_post)
     app.router.add_get("/orbit/agenda", agenda)

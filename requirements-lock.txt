@@ -115,3 +115,6 @@ winrt-Windows.Foundation.Collections==3.2.1
 winrt-Windows.Media.Control==3.2.1
 winrt-Windows.Storage.Streams==3.2.1
 yarl==1.25.1
+imageio-ffmpeg==0.6.0
+yt-dlp==2026.8.19
+pillow==13.0.0

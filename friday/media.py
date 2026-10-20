@@ -2,7 +2,7 @@
 
 As teclas de mídia funcionam com qualquer player aberto, sem conta nem API.
 Abrir programa: procura o atalho no Menu Iniciar (só abre o que está instalado; não roda comando arbitrário).
-Modo trabalho: abre os programas de WORK_APPS e fecha os de WORK_CLOSE (no .env), com confirmação.
+Modo trabalho: abre os programas de WORK_APPS e fecha os de WORK_CLOSE (no .env).
 """
 import os
 import unicodedata
@@ -102,5 +102,5 @@ SCHEMAS = [
         "name": {"type": "string"},
     }, ["name"]),
     fn("list_apps", "Lista programas instalados (filtro opcional).", {"filter": {"type": "string"}}),
-    fn("work_mode", "Modo trabalho: abre os programas de trabalho e fecha jogos/distrações (o usuário confirma).", {}),
+    fn("work_mode", "Modo trabalho: abre os programas de trabalho e fecha jogos/distrações", {}),
 ]

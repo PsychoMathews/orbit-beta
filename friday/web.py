@@ -107,8 +107,14 @@ def currency(codes: str = "USD,EUR") -> str:
 
 def _place(name: str) -> str:
     """'casa' -> endereço salvo em PLACES no .env (casa=Rua X, 10;trabalho=Av. Y); outro texto passa direto."""
-    saved = dict(p.split("=", 1) for p in config.PLACES.split(";") if "=" in p)
-    return saved.get(name.strip().lower(), name)
+    saved = {_plain(k): v for k, v in (p.split("=", 1) for p in config.PLACES.split(";") if "=" in p)}
+    key = _plain(name)
+    return saved.get(key) or saved.get(re.sub(r"^(a |o )?casa d[ao] ", "", key)) or name
+
+
+def _plain(s: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", s.strip().lower()) if unicodedata.category(c) != "Mn")
 
 
 def _geocode(place: str) -> str:
@@ -157,7 +163,8 @@ SCHEMAS = [
     fn("currency", "Cotação de moedas em reais. Ex.: 'USD', 'USD,EUR', 'BTC'.", {
         "codes": {"type": "string"},
     }),
-    fn("traffic", "Tempo de carro agora com o trânsito real. Aceita lugares salvos do usuário"
+    fn("traffic", "Tempo de carro agora com o trânsito real (se ele vai de transporte público, diga que é de carro"
+       " e use os tempos reais da Rotina.md como referência). Aceita lugares salvos do usuário"
        " (ex.: casa, trabalho) ou endereços.", {
         "destination": {"type": "string"}, "origin": {"type": "string", "description": "Padrão: casa"},
     }, ["destination"]),

@@ -87,6 +87,52 @@ function place() {
   island.setBounds({ x: Math.round(d.bounds.x + (d.bounds.width - WIN_W) / 2), y: d.bounds.y, width: WIN_W, height: WIN_H });
 }
 
+// ---------- Log e auto-recuperação ----------
+// Se a página da ilha trava, ela não avisa que o mouse saiu e a janela fica comendo os cliques da tela.
+// Então: ao travar, devolve o clique na hora; se não voltar em 10 s, recarrega a ilha. Tudo vai para orbit.log.
+let logFile = null;
+function olog(...parts) {
+  try {
+    if (!logFile) {
+      logFile = path.join(app.getPath('userData'), 'orbit.log');
+      if (fs.existsSync(logFile) && fs.statSync(logFile).size > 1024 * 1024) fs.renameSync(logFile, logFile + '.old');
+    }
+    const ts = new Date().toLocaleString('pt-BR', { hour12: false });
+    fs.appendFileSync(logFile, `${ts} ${parts.map((p) => (p instanceof Error ? p.stack : String(p))).join(' ')}\n`);
+  } catch { /* log nunca derruba o app */ }
+}
+process.on('uncaughtException', (e) => olog('ERRO não tratado:', e));
+process.on('unhandledRejection', (e) => olog('Promise rejeitada:', e));
+
+function releaseMouse() {
+  if (island && !island.isDestroyed()) island.setIgnoreMouseEvents(true, { forward: true });
+}
+
+function watchIsland(wc) {
+  let hangTimer = null;
+  const reload = (why) => {
+    olog('Recarregando a ilha:', why);
+    releaseMouse();
+    if (island && !island.isDestroyed()) island.webContents.reload();
+  };
+  wc.on('unresponsive', () => {
+    olog('Ilha parou de responder; devolvendo o clique para a tela');
+    releaseMouse();
+    clearTimeout(hangTimer);
+    hangTimer = setTimeout(() => {
+      try { wc.forcefullyCrashRenderer(); } catch { /* já caiu */ }
+      reload('travada há 10 s');
+    }, 10000);
+  });
+  wc.on('responsive', () => { clearTimeout(hangTimer); olog('Ilha voltou a responder'); });
+  wc.on('render-process-gone', (_e, d) => { clearTimeout(hangTimer); setTimeout(() => reload(`processo caiu (${d.reason})`), 1000); });
+  wc.on('did-fail-load', (_e, code, desc) => olog('Ilha não carregou:', code, desc));
+  wc.on('console-message', (_e, level, msg, line, src) => { if (level >= 2) olog(`[ilha] ${msg} (${path.basename(src || '')}:${line})`); });
+  // Ao acordar o PC (suspensão, tela apagada) solta o mouse por garantia: o "mouse saiu" pode ter se perdido.
+  require('electron').powerMonitor.on('resume', () => { olog('PC acordou'); releaseMouse(); });
+  require('electron').powerMonitor.on('unlock-screen', () => { olog('Tela desbloqueada'); releaseMouse(); });
+}
+
 function createIsland() {
   island = new BrowserWindow({
     width: WIN_W, height: WIN_H, frame: false, transparent: true, resizable: false, movable: false,
@@ -102,6 +148,7 @@ function createIsland() {
   island.webContents.on('will-navigate', (e) => e.preventDefault());
   island.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   island.once('ready-to-show', () => island.showInactive());
+  watchIsland(island.webContents);
   screen.on('display-metrics-changed', place);
   screen.on('display-added', place);
   screen.on('display-removed', place);
@@ -736,6 +783,7 @@ function startAll() {
 }
 
 app.whenReady().then(() => {
+  olog('Orbit iniciado', app.getVersion());
   app.setAppUserModelId(beta.ON ? 'Orbit.Beta' : 'Orbit.App');
   if (!beta.ON) return startAll();
   if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true }); // instalado: abre junto com o Windows

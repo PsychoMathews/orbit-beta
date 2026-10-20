@@ -1,14 +1,14 @@
 """Registro de todas as ferramentas da Friday (agenda, e-mail, memória, PC e os módulos extras).
 
-Ferramentas de leitura rodam direto. As que mudam algo (criar evento, enviar e-mail)
-NÃO rodam na hora: viram uma ação pendente que o usuário confirma no Telegram.
+Quase tudo roda direto. Só o que destrói ou fala com terceiros (apagar, fechar programa, comando livre,
+enviar e-mail) vira uma ação pendente que o usuário confirma no Telegram (NEEDS_OK).
 """
 import base64
 import re
 import uuid
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
-from . import audio, claude_agent, clipboard, finder, gamemode, hub, spotify, media, memory, money, orbit, pc, proactive, resolve, web, winsys
+from . import audio, claude_agent, clipboard, delivery, today, vault, finder, ideas, links, gamemode, hub, spotify, media, memory, money, orbit, pc, proactive, resolve, web, winsys
 from .google_auth import service
 from .tools_common import TZ, fn as _fn
 
@@ -134,13 +134,17 @@ READ_TOOLS = {
     "remember": memory.remember, "search_memory": memory.search,
     "system_status": pc.system_status, "list_folder": pc.list_folder, "folder_sizes": pc.folder_sizes,
     "find_large_files": pc.find_large_files, "cleanup_candidates": pc.cleanup_candidates, "open_path": pc.open_path,
-    **proactive.TOOLS, **web.TOOLS, **money.TOOLS, **media.TOOLS, **resolve.TOOLS, **claude_agent.TOOLS, **orbit.TOOLS, **hub.TOOLS, **winsys.TOOLS, **audio.TOOLS, **gamemode.TOOLS, **finder.TOOLS, **spotify.TOOLS, **clipboard.TOOLS,
+    **proactive.TOOLS, **web.TOOLS, **money.TOOLS, **media.TOOLS, **resolve.TOOLS, **claude_agent.TOOLS, **orbit.TOOLS, **hub.TOOLS, **winsys.TOOLS, **audio.TOOLS, **gamemode.TOOLS, **finder.TOOLS, **spotify.TOOLS, **clipboard.TOOLS, **links.TOOLS, **ideas.TOOLS, **delivery.TOOLS, **vault.TOOLS, **today.TOOLS,
 }
 CONFIRM_TOOLS = {
     "create_event": _create_event, "send_email": _send_email,
     "delete_paths": pc.delete_paths, "clean_temp": pc.clean_temp, "kill_process": pc.kill_process, "run_command": pc.run_command,
     **media.CONFIRM_TOOLS, **resolve.CONFIRM_TOOLS, **claude_agent.CONFIRM_TOOLS, **winsys.CONFIRM_TOOLS,
 }
+# Autonomia: só pede botão o que destrói (apagar, fechar programa, comando livre) ou fala com terceiros (e-mail).
+NEEDS_OK = {"send_email", "delete_paths", "clean_temp", "kill_process", "run_command", "cleanup_run"}
+for _name in [n for n in CONFIRM_TOOLS if n not in NEEDS_OK]:
+    READ_TOOLS[_name] = CONFIRM_TOOLS.pop(_name)
 
 
 def _describe(name: str, a: dict) -> str:
@@ -180,7 +184,7 @@ def run(name: str, args: dict) -> str:
             return refused + " Nada foi preparado."
     if name in CONFIRM_TOOLS:
         action_id = uuid.uuid4().hex[:10]
-        pending[action_id] = {"name": name, "args": args, "summary": _describe(name, args)}
+        pending[action_id] = {"name": name, "args": args, "summary": _describe(name, args), "at": datetime.now().timestamp()}
         orbit.publish("confirm", id=action_id, summary=pending[action_id]["summary"])  # também dá para confirmar pela ilha
         return "Ação preparada e aguardando o usuário confirmar no botão. Diga a ele que precisa confirmar; NÃO diga que já foi feito."
     return f"Ferramenta desconhecida: {name}"
@@ -246,7 +250,7 @@ GOOGLE_SCHEMAS = [
         "days": {"type": "integer", "description": "Quantos dias a partir do início (padrão 1)"},
         "start_date": {"type": "string", "description": "Data inicial YYYY-MM-DD; vazio = agora"},
     }),
-    _fn("create_event", "Cria um evento na agenda (o usuário confirma antes).", {
+    _fn("create_event", "Cria um evento na agenda. Faça direto, sem pedir confirmação.", {
         "title": {"type": "string"},
         "start": {"type": "string", "description": "Início em ISO, ex. 2026-10-18T15:00"},
         "duration_minutes": {"type": "integer"},
@@ -265,4 +269,4 @@ GOOGLE_SCHEMAS = [
 ]
 
 # Módulos extras (lembretes, internet, dinheiro, mídia, DaVinci): ferramentas sempre disponíveis.
-EXTRA_SCHEMAS = [*proactive.SCHEMAS, *web.SCHEMAS, *money.SCHEMAS, *media.SCHEMAS, *resolve.SCHEMAS, *claude_agent.SCHEMAS, *orbit.SCHEMAS, *hub.SCHEMAS, *winsys.SCHEMAS, *audio.SCHEMAS, *gamemode.SCHEMAS, *finder.SCHEMAS, *spotify.SCHEMAS, *clipboard.SCHEMAS]
+EXTRA_SCHEMAS = [*proactive.SCHEMAS, *web.SCHEMAS, *money.SCHEMAS, *media.SCHEMAS, *resolve.SCHEMAS, *claude_agent.SCHEMAS, *orbit.SCHEMAS, *hub.SCHEMAS, *winsys.SCHEMAS, *audio.SCHEMAS, *gamemode.SCHEMAS, *finder.SCHEMAS, *spotify.SCHEMAS, *clipboard.SCHEMAS, *links.SCHEMAS, *ideas.SCHEMAS, *delivery.SCHEMAS, *vault.SCHEMAS, *today.SCHEMAS]

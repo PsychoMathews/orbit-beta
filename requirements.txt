@@ -22,3 +22,6 @@ winrt-Windows.Storage.Streams
 pycaw
 edge-tts
 winrt-Windows.Foundation.Collections
+yt-dlp
+imageio-ffmpeg
+pillow

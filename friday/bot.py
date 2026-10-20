@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
-from . import alexa, brain, claude_agent, config, desktop, gamemode, hub, memory, orbit, winsys, proactive, tools, voice
+from . import alexa, brain, claude_agent, config, delivery, vault, desktop, gamemode, hub, memory, orbit, winsys, proactive, tools, voice
 from .paths import MEMORIA
 from . import assistente
 from .assistente import personalizar
@@ -89,6 +90,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def _respond(update, context, text, reply_with_voice, heard=None, heavy=False):
     chat_id = update.effective_chat.id
+    if await _voice_decision(update, text):
+        return
     await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
     try:
         reply, pending_ids = await brain.ask(chat_id, text, heavy=heavy, spoken=reply_with_voice)
@@ -123,24 +126,56 @@ async def _ask_confirmations(bot, chat_id, pending_ids):
         await bot.send_message(chat_id, action["summary"], reply_markup=buttons)
 
 
-async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    if not _allowed(update):
-        await query.answer("Acesso negado.")
-        return
-    await query.answer()
-    decision, action_id = query.data.split(":", 1)
+async def _decide(chat_id: int, action_id: str, ok: bool) -> str:
+    """Executa ou cancela uma ação pendente e conta o resultado ao cérebro (senão ela não fica sabendo)."""
     summary = tools.pending.get(action_id, {}).get("summary", "")
-    if decision == "no":
+    if not ok:
         tools.cancel_pending(action_id)
-        await query.edit_message_text(f"{summary}\n\n❌ Cancelado.")
-        return
+        brain.record(chat_id, "[cancelei no botão]", f"Cancelado: {summary[:300]}")
+        return f"{summary}\n\n❌ Cancelado."
     try:
         result = await asyncio.to_thread(tools.execute_pending, action_id)
     except Exception as e:
         log.exception("Erro ao executar ação")
         result = f"Falhou: {e}"
-    await query.edit_message_text(f"{summary}\n\n✅ {result}")
+    brain.record(chat_id, "[confirmei no botão]", f"Executei: {summary[:300]}\nResultado: {str(result)[:1500]}")
+    return f"{summary}\n\n✅ {result}"
+
+
+async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not _allowed(update):
+        return
+    try:  # clique atrasado ("query is too old") não pode impedir a ação: só a animação do botão se perde
+        await query.answer()
+    except Exception:
+        log.warning("Clique no botão chegou atrasado; executando assim mesmo")
+    decision, action_id = query.data.split(":", 1)
+    if action_id not in tools.pending:
+        await query.message.reply_text("Essa ação expirou ou já foi tratada. Peça de novo.")
+        return
+    text = await _decide(update.effective_chat.id, action_id, decision == "ok")
+    try:
+        await query.edit_message_text(text[:4000])
+    except Exception:
+        await query.message.reply_text(text[:4000])
+
+
+# Plano B para o botão: responder "confirma"/"pode"/"cancela" (texto ou áudio) decide a última ação pendente.
+# Só a mensagem do próprio usuário dispara isto; o modelo nunca consegue se autoconfirmar.
+_YES = re.compile(r"^\W*(sim|confirm[oa]?|confirmado|pode( ir| fazer| rodar| mandar)?|ok|beleza|manda( ver)?|"
+                  r"executa|faz( isso)?|autorizo|vai)\W*$", re.I)
+_NO = re.compile(r"^\W*(n[aã]o|cancela|cancelar|cancelado|deixa( pra l[aá])?|esquece|para)\W*$", re.I)
+
+
+async def _voice_decision(update, text: str) -> bool:
+    recent = [k for k, a in tools.pending.items() if time.time() - a.get("at", 0) < 600]  # só ação dos últimos 10 min
+    if not recent or not (_YES.match(text) or _NO.match(text)):
+        return False
+    action_id = recent[-1]
+    result = await _decide(update.effective_chat.id, action_id, bool(_YES.match(text)))
+    await update.message.reply_text(result[:4000])
+    return True
 
 
 async def _on_startup(app) -> None:
@@ -209,6 +244,9 @@ async def _on_startup(app) -> None:
         await hub.run(notify)
         await winsys.run(notify)
         claude_agent.set_notifier(asyncio.get_running_loop(), notify)  # avisa quando o Claude terminar
+        asyncio.get_running_loop().create_task(vault.run(notify))  # revisão da noite: aprende com o dia
+        if app:
+            delivery.set_sender(asyncio.get_running_loop(), app.bot, config.OWNER_ID)  # arquivos e prints no Telegram
     if True:
         try:
             desktop.start(asyncio.get_running_loop(), send_to_telegram)
@@ -256,7 +294,7 @@ def main() -> None:
         return
     if not config.ALLOWED_USER_IDS:
         log.warning("TELEGRAM_ALLOWED_USER_IDS vazio: mande /start pro bot pra descobrir seu ID.")
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).post_init(_on_startup).build()
+    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).concurrent_updates(True).post_init(_on_startup).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CommandHandler("pesado", heavy))

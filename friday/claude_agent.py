@@ -1,7 +1,7 @@
 """A assistente passa o trabalho pesado para o Claude (Claude Code em modo headless).
 
 - claude_davinci: edição no DaVinci Resolve. O Claude só pode usar as ferramentas do DaVinci (MCP "DaVinci Resolve").
-  Altera o projeto, então passa pelo botão de confirmação.
+  Roda direto (autonomia); o Claude não apaga nada sem o pedido dizer.
 - claude_think: tarefas pesadas de texto/raciocínio/pesquisa. Só pode ler a internet; nada no PC. Sem botão.
 Roda em segundo plano: a assistente responde "passei pro Claude" na hora e avisa quando terminar.
 Gasta a cota do plano do Claude do usuário (combinado com ele).
@@ -9,6 +9,7 @@ Gasta a cota do plano do Claude do usuário (combinado com ele).
 import asyncio
 import json
 import logging
+import os
 import shutil
 import subprocess
 import threading
@@ -39,6 +40,11 @@ MODES = {
     },
 }
 DENIED = "Bash,Edit,Write,MultiEdit,NotebookEdit,PowerShell"
+# Pesquisa, análise de link e ideias vão no Sonnet (gasta bem menos cota); mexer no DaVinci fica no Opus.
+MODEL = os.getenv("CLAUDE_MODEL", "sonnet")
+MODEL_DAVINCI = os.getenv("CLAUDE_DAVINCI_MODEL", "opus")
+# Sem isto o Claude Code usa a ANTHROPIC_API_KEY do .env (cobrada à parte) em vez da conta/plano do usuário.
+PLAN_ENV = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")}
 
 _notify = None  # (loop, corrotina notify(text, speak_text)), configurado pelo bot
 _running: dict[str, dict] = {}
@@ -64,8 +70,9 @@ def _run(job_id: str, mode: str, task: str) -> None:
     try:
         r = subprocess.run(
             [CLAUDE, "-p", _prompt(mode, task), "--output-format", "json",
+             "--model", MODEL_DAVINCI if mode == "davinci" else MODEL,
              "--allowedTools", MODES[mode]["allowed"], "--disallowedTools", DENIED],
-            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=TIMEOUT,
+            cwd=ROOT, env=PLAN_ENV, capture_output=True, text=True, encoding="utf-8", timeout=TIMEOUT,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         data = json.loads(r.stdout or "{}")
@@ -122,7 +129,7 @@ def describe(name: str, a: dict) -> str | None:
 SCHEMAS = [
     fn("claude_davinci", "Passa um pedido de EDIÇÃO no DaVinci Resolve para o Claude (criar/editar timelines, clipes,"
        " bins, marcadores, cortes, cor, legendas, configurar render, organizar mídia). Escreva o pedido completo e"
-       " claro, com nomes e detalhes que o usuário deu. O usuário confirma num botão.", {
+       " claro, com nomes e detalhes que o usuário deu.", {
            "task": {"type": "string", "description": "O pedido completo para o Claude, em português"},
        }, ["task"]),
     fn("claude_think", "Passa uma tarefa PESADA para o Claude: escrever textos longos, roteiros, propostas, e-mails"
