@@ -5,6 +5,7 @@ e, se PC_SPEAK=1 no .env, também é falado nas caixas de som do PC.
 Estado (lembretes, o que já foi avisado) fica em memoria/lembretes.json e memoria/.avisos.json.
 """
 import asyncio
+import os
 import json
 import logging
 import re
@@ -63,6 +64,8 @@ def _repeat_norm(repeat: str) -> str | None:
         return "semanal"
     if r in ("mensal", "todomes"):
         return "mensal"
+    if r in ("anual", "todoano", "aniversario"):
+        return "anual"
     days = [d.strip()[:3] for d in re.split(r"\s*(?:,|;|/|\be\b)\s*", raw) if d.strip()]
     return ",".join(dict.fromkeys(days)) if days and all(d in _WD for d in days) else None
 
@@ -72,6 +75,11 @@ def _next(dt: datetime, repeat: str) -> datetime:
         return dt + timedelta(days=1)
     if repeat == "semanal":
         return dt + timedelta(weeks=1)
+    if repeat == "anual":
+        try:
+            return dt.replace(year=dt.year + 1)
+        except ValueError:  # 29/02
+            return dt.replace(year=dt.year + 1, day=28)
     if repeat == "mensal":
         month = dt.month % 12 + 1
         year = dt.year + (dt.month == 12)
@@ -89,7 +97,7 @@ def _next(dt: datetime, repeat: str) -> datetime:
 
 def _repeat_label(repeat: str) -> str:
     return {"": "", "diario": "todo dia", "dias_uteis": "de segunda a sexta", "semanal": "toda semana",
-            "mensal": "todo mês"}.get(repeat, "toda " + ", ".join(repeat.split(",")))
+            "mensal": "todo mês", "anual": "todo ano"}.get(repeat, "toda " + ", ".join(repeat.split(",")))
 
 
 # ---------- Ferramentas (a IA usa) ----------
@@ -173,7 +181,7 @@ SCHEMAS = [
            "when": {"type": "string", "description": "Data e hora ISO, ex. 2026-10-18T18:00"},
            "in_minutes": {"type": "integer", "description": "Para 'daqui a X': minutos a partir de agora (2 horas = 120)"},
            "repeat": {"type": "string", "description": "Repetição: vazio (uma vez), diario, dias_uteis, semanal,"
-                      " mensal, ou dias da semana 'seg,qua,sex'. Só use se ele disse que repete."},
+                      " mensal, anual (aniversários e datas), ou dias da semana 'seg,qua,sex'. Só use se ele disse que repete."},
        }, ["text"]),
     fn("reminder_repeat", "Faz um lembrete existente se repetir (ou parar de repetir). Use depois que ele confirmar"
        " que o lembrete se repete.", {
@@ -195,6 +203,37 @@ def _quiet(now: datetime) -> bool:
     return (now.hour >= start or now.hour < end) if start > end else start <= now.hour < end
 
 
+# ---------- Desacelerar (ele se cobra demais) ----------
+SLOW_PER_WEEK = int(os.getenv("SLOW_DOWN_PER_WEEK", "2"))
+
+
+def _next_slow(after: datetime) -> datetime:
+    """Próximo momento aleatório: dia útil, entre 14h e 18h, uns dias depois (cerca de SLOW_PER_WEEK por semana)."""
+    import random
+    day = after + timedelta(days=random.randint(2, 4) if SLOW_PER_WEEK <= 2 else random.randint(1, 2))
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    return day.replace(hour=random.randint(14, 17), minute=random.randint(0, 59), second=0, microsecond=0)
+
+
+async def _slow_down(now: datetime, state: dict, notify, ask_brain) -> None:
+    if SLOW_PER_WEEK <= 0:
+        return
+    when = state.get("slow_next")
+    if not when:
+        state["slow_next"] = _next_slow(now).isoformat()
+        return
+    if now < _parse_when(when):
+        return
+    state["slow_next"] = _next_slow(now).isoformat()
+    text = await ask_brain(
+        "Escreva UMA mensagem curta (1 a 2 frases) para o usuário dar uma desacelerada agora: ele se cobra demais"
+        " com trabalho. Pode sugerir respirar, levantar, beber água, olhar algo bom que ele fez. Varie, use o que sabe"
+        " dele (Eu.md), sem clichê de coach, sem exagero, com o seu jeito. Responda só a mensagem.", tools=False)
+    if text:
+        await notify(f"🌿 {text}", text, kind="proactive")
+
+
 async def run(notify, ask_brain) -> None:
     """notify(text, speak_text): corrotina que avisa o usuário. ask_brain(prompt): resposta falada da Friday."""
     state = _load(STATE, {})
@@ -211,6 +250,8 @@ async def run(notify, ask_brain) -> None:
                 await _meeting_alerts(now, state, notify)
             if google_auth.connected() and tick % 20 == 0 and not _quiet(now):  # a cada 10 min
                 await _urgent_emails(state, notify, ask_brain)
+            if tick % 2 == 0:
+                await _slow_down(now, state, notify, ask_brain)
             _save(STATE, state)
         except Exception:
             log.exception("Erro no relógio da Friday")

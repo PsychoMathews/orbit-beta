@@ -196,6 +196,8 @@ async def _on_startup(app) -> None:
     async def notify(text, speak_text, kind="proactive"):
         """Aviso proativo: ilha do PC, Telegram (texto + voz) e, se PC_SPEAK, caixas de som do PC. speak_text=None: só texto."""
         chat_id = config.OWNER_ID
+        text = personalizar(text)  # frases prontas dizem "chefe": troca pelo tratamento escolhido (ou tira)
+        speak_text = personalizar(speak_text) if speak_text else speak_text
         if not gamemode.allows(kind):
             gamemode.hold(text, kind)  # modo jogo: guarda para o resumo
             return
