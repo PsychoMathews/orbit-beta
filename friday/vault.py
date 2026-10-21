@@ -89,6 +89,14 @@ def core() -> str:
 _last: dict[int, tuple] = {}
 
 
+def prime(history: dict) -> None:
+    """Ao iniciar: a última troca de cada conversa já foi gravada antes; não grava de novo no dia seguinte."""
+    for chat_id, msgs in history.items():
+        msgs = list(msgs)
+        if len(msgs) >= 2:
+            _last[chat_id] = (msgs[-2]["content"], msgs[-1]["content"])
+
+
 def log_exchange(chat_id: int, history) -> None:
     """Chamado a cada conversa salva: grava a troca nova no arquivo do dia (uma vez só)."""
     msgs = list(history)

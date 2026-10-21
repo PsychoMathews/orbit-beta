@@ -59,11 +59,39 @@ def _create_event(title: str, start: str, duration_minutes: int = 60, descriptio
     if begin.tzinfo is None:
         begin = begin.replace(tzinfo=TZ)
     end = begin + timedelta(minutes=int(duration_minutes))
+    # Convite que já chegou por e-mail já está na agenda: não cria outro igual por cima.
+    words = {w for w in re.findall(r"\w{3,}", title.lower())}
+    for ev in list_events_raw(begin - timedelta(hours=2), end + timedelta(hours=2)):
+        same_time = ev.get("start", {}).get("dateTime", "")[:16] == begin.isoformat()[:16]
+        overlap = words & {w for w in re.findall(r"\w{3,}", (ev.get("summary") or "").lower())}
+        if overlap and (same_time or len(overlap) >= 2):
+            return (f"Já existe na agenda: \"{ev.get('summary')}\" ({ev.get('start', {}).get('dateTime', '')[11:16]})."
+                    " Não criei outro. Se ele quer confirmar presença num convite, use rsvp_event.")
     ev = service("calendar", "v3").events().insert(calendarId="primary", body={
         "summary": title, "description": description,
         "start": {"dateTime": begin.isoformat()}, "end": {"dateTime": end.isoformat()},
     }).execute()
     return f"Evento criado: {ev.get('summary')} em {begin:%d/%m %H:%M}."
+
+
+def rsvp_event(event: str, response: str = "sim") -> str:
+    """Responde um convite da agenda (sim / não / talvez). Procura pelo nome nos próximos 30 dias."""
+    status = {"sim": "accepted", "nao": "declined", "não": "declined", "talvez": "tentative"}.get(response.strip().lower())
+    if not status:
+        return "Resposta inválida: use sim, não ou talvez."
+    now = datetime.now(TZ)
+    words = {w for w in re.findall(r"\w{3,}", event.lower())}
+    hits = [e for e in list_events_raw(now - timedelta(hours=12), now + timedelta(days=30), 50)
+            if words & {w for w in re.findall(r"\w{3,}", (e.get("summary") or "").lower())}
+            and any(a.get("self") for a in e.get("attendees", []))]
+    if not hits:
+        return f"Não achei convite com '{event}' nos próximos 30 dias (só dá para responder convite de outra pessoa)."
+    ev = hits[0]
+    attendees = [dict(a, responseStatus=status) if a.get("self") else a for a in ev["attendees"]]
+    service("calendar", "v3").events().patch(calendarId="primary", eventId=ev["id"], sendUpdates="all",
+                                             body={"attendees": attendees}).execute()
+    label = {"accepted": "Presença confirmada", "declined": "Recusado", "tentative": "Marcado como talvez"}[status]
+    return f"{label}: {ev.get('summary')} ({ev.get('start', {}).get('dateTime', '')[:16].replace('T', ' às ')}). O organizador foi avisado."
 
 
 # ---------- Gmail ----------
@@ -130,7 +158,7 @@ def _send_email(to: str, subject: str, body: str) -> str:
 # ---------- Registro ----------
 
 READ_TOOLS = {
-    "list_events": list_events, "search_emails": search_emails, "read_email": read_email,
+    "list_events": list_events, "search_emails": search_emails, "read_email": read_email, "rsvp_event": rsvp_event,
     "remember": memory.remember, "search_memory": memory.search,
     "system_status": pc.system_status, "list_folder": pc.list_folder, "folder_sizes": pc.folder_sizes,
     "find_large_files": pc.find_large_files, "cleanup_candidates": pc.cleanup_candidates, "open_path": pc.open_path,
@@ -164,6 +192,31 @@ def _describe(name: str, a: dict) -> str:
     return f"✉️ Enviar e-mail para {a.get('to')}\nAssunto: {a.get('subject')}\n\n{a.get('body')}"
 
 
+# Comando que só consulta pode rodar sem botão. Lista fechada: cada comando da linha (separado por ; ou |, ou depois
+# de "$x =") precisa estar aqui, e nada de redirecionar (>), operador de chamada (&), crase ou $( ).
+_READ_ONLY_CMDS = re.compile(
+    r"(get|test|select|sort|where|format|measure|group|compare|convertto|out-string|write-output|resolve)-?\w*$|"
+    r"(tailscale|ipconfig|hostname|whoami|ping|nslookup|systeminfo|tasklist|where(\.exe)?|nvidia-smi|echo)$", re.I)
+_TAILSCALE_OK = re.compile(r"^tailscale\s+(ip|status|version|ping|netcheck)\b", re.I)
+
+
+def _read_only(command: str) -> bool:
+    if not command or re.search(r">|`|\$\(|&|\binvoke-|\biex\b|-command\b|-encoded", command, re.I):
+        return False
+    for part in re.split(r"[;|\n]", command):
+        part = re.sub(r"^\s*\$\w+\s*=\s*", "", part).strip()  # "$acc = Get-..." -> "Get-..."
+        if not part:
+            continue
+        if part.lower().startswith("tailscale") and not _TAILSCALE_OK.match(part):
+            return False
+        word = part.split()[0].strip("()")
+        if word.startswith("$") or word.startswith("\"") or word.startswith("'"):
+            continue  # só uma variável ou texto
+        if not _READ_ONLY_CMDS.match(word) and word.lower() != "out-string":
+            return False
+    return True
+
+
 def run(name: str, args: dict) -> str:
     """Chamado pelo cérebro. Retorna o texto que a IA vai ler."""
     if name == "remember" and re.search(r"R\$|\bgast|\bpague", str(args)):
@@ -182,6 +235,8 @@ def run(name: str, args: dict) -> str:
         refused = pc.check_delete(args.get("paths", []))
         if refused:
             return refused + " Nada foi preparado."
+    if name == "run_command" and _read_only(args.get("command", "")):
+        return pc.run_command(args["command"])  # só consulta: roda direto, sem botão
     if name in CONFIRM_TOOLS:
         action_id = uuid.uuid4().hex[:10]
         pending[action_id] = {"name": name, "args": args, "summary": _describe(name, args), "at": datetime.now().timestamp()}
@@ -239,7 +294,8 @@ PC_SCHEMAS = [
     _fn("kill_process", "Fecha um programa pelo nome do processo, ex. 'chrome.exe' (o usuário confirma antes).", {
         "name": {"type": "string"},
     }, ["name"]),
-    _fn("run_command", "Roda um comando PowerShell no PC (o usuário confirma antes). Use só quando as outras"
+    _fn("run_command", "Roda um comando PowerShell no PC. Consultas (Get-*, ipconfig, tailscale ip...) rodam direto;"
+        " o resto o usuário confirma antes. Use só quando as outras"
         " ferramentas não bastam. Nunca use para apagar de vez nem para mexer em pastas protegidas.", {
         "command": {"type": "string"},
     }, ["command"]),
@@ -256,6 +312,11 @@ GOOGLE_SCHEMAS = [
         "duration_minutes": {"type": "integer"},
         "description": {"type": "string"},
     }, ["title", "start"]),
+    _fn("rsvp_event", "Responde um convite de reunião da agenda (confirma presença, recusa ou talvez). O organizador"
+        " é avisado. Faça direto quando ele pedir.", {
+        "event": {"type": "string", "description": "Nome ou parte do nome do evento"},
+        "response": {"type": "string", "enum": ["sim", "não", "talvez"]},
+    }, ["event"]),
     _fn("search_emails", "Busca e-mails no Gmail com a sintaxe de busca do Gmail.", {
         "query": {"type": "string", "description": "Ex.: 'is:unread in:inbox', 'from:fulano', 'newer_than:2d'"},
         "max_results": {"type": "integer"},

@@ -147,6 +147,7 @@ function collapseIfIdle() {
 // Com setIgnoreMouseEvents(forward) o movimento chega mesmo quando o clique atravessa a janela.
 document.addEventListener('mousemove', (e) => setHover(!!e.target.closest('#island')));
 document.addEventListener('mouseleave', () => setHover(false));
+api.onCursorOut(() => setHover(false)); // o processo principal viu o cursor sair (plano B do mouseleave)
 window.addEventListener('blur', () => setTimeout(collapseIfIdle, 50));
 
 document.getElementById('compact').addEventListener('click', () => {

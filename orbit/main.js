@@ -625,6 +625,9 @@ function watchCursor() {
     const x = p.x - b.x, y = p.y - b.y, r = islandRect;
     const now = x >= r.x - 6 && x <= r.x + r.w + 6 && y >= r.y - 6 && y <= r.y + r.h + 6;
     if (now && !inside) island.setIgnoreMouseEvents(false);
+    // Plano B do "mouse saiu": a página às vezes não recebe o mouseleave (saída rápida, modo leve, outra janela
+    // por cima) e a ilha fica aberta. O processo principal vê o cursor de verdade e avisa.
+    if (!now && inside) island.webContents.send('cursor-out');
     inside = now;
   }, 120);
 }

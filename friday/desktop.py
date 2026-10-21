@@ -182,10 +182,28 @@ def _didnt_hear(reason: str) -> None:
         time.sleep(0.08)
 
 
+def _open_mic() -> "sd.InputStream":
+    """Abre o microfone. Se a lista de dispositivos mudou (Área de Trabalho Remota, fone desconectado), recarrega
+    a lista e cai no microfone padrão do momento; sem microfone nenhum, avisa em vez de dar erro calado."""
+    opts = dict(samplerate=RATE, channels=1, dtype="float32", blocksize=1600)
+    try:
+        return sd.InputStream(device=_mic_index(), **opts)
+    except sd.PortAudioError:
+        log.warning("Microfone configurado indisponível; recarregando a lista e usando o padrão")
+        sd._terminate()
+        sd._initialize()
+        try:
+            return sd.InputStream(device=None, **opts)
+        except sd.PortAudioError as e:
+            orbit.publish("notify", text="Sem microfone disponível. Na Área de Trabalho Remota, libere o microfone"
+                                         " no Windows App.", kind="error")
+            raise RuntimeError("sem microfone disponível") from e
+
+
 def _record() -> np.ndarray:
     chunks, heard_voice, quiet_since, started = [], False, None, time.time()
     floor, peak = None, 0.0
-    with sd.InputStream(device=_mic_index(), samplerate=RATE, channels=1, dtype="float32", blocksize=1600) as stream:
+    with _open_mic() as stream:
         while not _stop.is_set() and time.time() - started < MAX_SECONDS:
             block, _ = stream.read(1600)
             chunks.append(block[:, 0].copy())

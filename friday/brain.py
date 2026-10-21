@@ -20,6 +20,7 @@ KEEP_ALIVE = config.OLLAMA_KEEP_ALIVE  # depois disso sem uso, o modelo sai da p
 _history: dict[int, deque] = defaultdict(lambda: deque(maxlen=MAX_TURNS * 2))
 for _chat, _msgs in memory.load_conversation().items():
     _history[_chat].extend(_msgs)
+memory.vault.prime(_history)  # o registro do dia não repete a última troca de ontem
 # Conversa parada há mais que isso começa do zero (resposta velha errada não contamina a nova). 0 = nunca.
 IDLE_RESET = int(os.getenv("IDLE_RESET_MINUTES", "10")) * 60
 try:
@@ -151,7 +152,8 @@ def _required_tool(text: str) -> str | None:
         return "list_reminders"
     if _reminder_args(text):
         return "add_reminder"
-    if _REMINDER_Q.search(text) and not re.search(r"\b(cancela|tira|apaga|quais|lista|tenho)\b", text, re.I):
+    if (_REMINDER_Q.search(text) and not _asks_about_reminders(text)
+            and not re.search(r"\b(cancela|tira|apaga|quais|lista|tenho)\b", text, re.I)):
         return "add_reminder"  # sem pré-busca: o modelo tem que chamar a ferramenta (não pode só dizer que criou)
     if _game_args(text):
         return "game_mode"
@@ -361,9 +363,18 @@ _POWER_Q = re.compile(r"(como (est[aá]|t[aá])|qual|status|situa[cç][aã]o).*(
 _REMINDER_Q = re.compile(r"\b(me lembr\w*|lembre-me|me avis\w*|cria(r)? um lembrete|lembrete)\b", re.I)
 
 
+def _asks_about_reminders(text: str) -> bool:
+    """'por onde você vai me lembrar?', 'como você me avisa?': pergunta sobre lembretes, não pedido de lembrete."""
+    asks = re.search(r"\b(por onde|como|onde|por que|porque|qual|quais|ser[aá] que|voc[eê] vai|vc vai|consegue)\b", text, re.I)
+    orders = re.search(r"\b(me lembr\w*|me avis\w*|lembre-me)\s+(de|do|da|que|pra|para|às|as|amanh|hoje|daqui|em \d|toda|todo)",
+                       text, re.I)
+    return bool(asks and not orders)
+
+
 def _reminder_args(text: str) -> dict | None:
     """'me lembra daqui dois minutos de beber água' -> {'text': 'beber água', 'in_minutes': 2}. None se não entender."""
-    if not _REMINDER_Q.search(text) or re.search(r"\b(cancela|tira|apaga|quais|lista|tenho)\b", text, re.I):
+    if (not _REMINDER_Q.search(text) or _asks_about_reminders(text)
+            or re.search(r"\b(cancela|tira|apaga|quais|lista|tenho)\b", text, re.I)):
         return None
     t = text.lower()
     for word, n in _NUM_WORDS.items():
@@ -465,8 +476,8 @@ _HEAVY_PATTERN = (r"\bescreve|\bescrever|roteiro|proposta|or[cç]amento|analis|e
 # Modelo pequeno se perde com 35 ferramentas de uma vez: cada pergunta recebe só os grupos que fazem sentido.
 TOOL_GROUPS = {
     "google": (r"agenda|compromisso|reuni[aã]o|evento|o que (eu )?tenho|\bmarca\b|e-?mails?|gmail|caixa de entrada|"
-               r"\bresponde\b|\benvia\b|\bmanda (um|uma|o|a)\b",
-               ["list_events", "create_event", "search_emails", "read_email", "send_email"]),
+               r"\bresponde\b|\benvia\b|\bmanda (um|uma|o|a)\b|presen[cç]a|convite",
+               ["list_events", "create_event", "rsvp_event", "search_emails", "read_email", "send_email"]),
     "reminders": (r"lembr|\bme avisa|\bme chama|daqui a|alarme|despert",
                   ["add_reminder", "list_reminders", "cancel_reminder"]),
     "web": (r"pesquis|procur|busca|not[ií]cia|internet|\bsite\b|\blink\b|pre[cç]o|quanto custa|resultado|"

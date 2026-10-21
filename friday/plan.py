@@ -78,7 +78,14 @@ async def ask(system: str, history, text: str, with_google: bool, note: str = ""
     _count["n"] += 1
     before = set(tools.pending)
     orbit.tool_calls.clear()
-    data = await asyncio.to_thread(_run, system, _conversation(history, text, note), with_google)
+    prompt = _conversation(history, text, note)
+    data = await asyncio.to_thread(_run, system, prompt, with_google)
+    for wait in (5, 15):  # falha passageira (login sendo renovado por outro Claude Code, rede): tenta de novo
+        if not data.get("is_error") or orbit.tool_calls:  # se já usou ferramenta, repetir poderia fazer duas vezes
+            break
+        log.warning("Claude pelo plano falhou (%s); tentando de novo em %ss", str(data.get("result"))[:120], wait)
+        await asyncio.sleep(wait)
+        data = await asyncio.to_thread(_run, system, prompt, with_google)
     usage = data.get("usage") or {}
     log.info("Plano: %s, %.1fs, entrada %s, cache gravado %s, cache lido %s, saída %s, equivalente US$ %s (cota, não cobrado), %d/%d hoje",
              claude_agent.MODEL, (data.get("duration_ms") or 0) / 1000, usage.get("input_tokens"),

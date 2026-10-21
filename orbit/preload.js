@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('orbit', {
   menu: () => ipcRenderer.send('menu'),
   expanded: (open) => ipcRenderer.send('expanded', open),
   onEscape: (fn) => ipcRenderer.on('escape', () => fn()),
+  onCursorOut: (fn) => ipcRenderer.on('cursor-out', () => fn()),
   openSettings: (page) => ipcRenderer.send('open-settings', page),
   openUrl: (url) => ipcRenderer.send('open-url', url),
   get: (p) => ipcRenderer.invoke('bridge', 'GET', p),

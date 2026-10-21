@@ -37,11 +37,11 @@ Orbit.register({
       this.add('you', text);
       api.post('/orbit/ask', { text, speak: Orbit.cfg.friday.speakTyped });
     };
-    this.log = [];
+    this.log = this.log || []; // respostas que chegaram antes de a aba abrir ficam
     this.render();
   },
   add(who, text) {
-    this.log.push({ who, text, t: Date.now() });
+    (this.log ||= []).push({ who, text, t: Date.now() }); // a aba pode nunca ter sido aberta
     this.log = this.log.slice(-12);
     if (!this.$) return;
     const box = this.$('#sx-log');

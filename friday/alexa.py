@@ -224,7 +224,7 @@ def make_app(send_to_telegram) -> web.Application:
             return web.json_response({"resposta": "Não ouvi nada. Tenta de novo.", "audio": ""})
         log.info("iPhone ouviu: %r", text)
         try:
-            reply, pending = await asyncio.wait_for(brain.ask(chat_id, text, spoken=True, channel="alexa"), 90)
+            reply, pending = await asyncio.wait_for(brain.ask(chat_id, text, spoken=True, channel="atalho"), 90)
         except Exception:
             log.exception("Erro respondendo o atalho")
             return web.json_response({"resposta": "Tive um problema pra pensar. Tenta de novo.", "audio": ""})
