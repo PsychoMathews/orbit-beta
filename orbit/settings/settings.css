@@ -9,7 +9,8 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .ico { display: block; flex: none; }
 header { height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 16px; font-weight: 600; -webkit-app-region: drag; user-select: none; }
 header .sub { color: var(--faint); font-weight: 400; }
-.logo { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff 0, #9fe6ff 25%, #4f7dff 60%, #6a3cff 100%); box-shadow: 0 0 10px rgba(110,160,255,.6); }
+/* o mesmo anel vazado do orbe da ilha, nas cores escolhidas */
+.logo { width: 16px; height: 16px; border-radius: 50%; background: var(--orb-ring, conic-gradient(#2f7bff, #9b5cff, #ff6fb5, #2f7bff)); -webkit-mask: radial-gradient(circle, transparent 50%, #000 54%, #000 70%, transparent 74%); filter: drop-shadow(0 0 4px var(--orb1, #2f7bff)); }
 .wrap { display: flex; height: calc(100% - 40px); }
 nav { width: 210px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
 nav button { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-radius: 10px; color: var(--dim); text-align: left; }

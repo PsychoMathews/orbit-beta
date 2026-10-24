@@ -164,7 +164,8 @@ function openSettings(page) {
   }
   settingsWin = new BrowserWindow({
     width: 900, height: 640, minWidth: 760, minHeight: 520, title: 'Orbit — Configurações',
-    backgroundColor: '#0d0d0f', autoHideMenuBar: true, show: false, icon: trayImage(64),
+    backgroundColor: '#0d0d0f', autoHideMenuBar: true, show: false,
+    icon: app.isPackaged ? undefined : path.join(__dirname, 'build-assets', 'icon.png'), // instalado: usa o ícone do .exe
     titleBarStyle: 'hidden', titleBarOverlay: { color: '#0d0d0f', symbolColor: '#d8d8d8', height: 40 },
     webPreferences: { preload: path.join(__dirname, 'preload.js') },
   });

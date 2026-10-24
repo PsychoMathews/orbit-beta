@@ -157,7 +157,11 @@ function renderOpts(boxId, opts) {
   }
 }
 
-function render() { renderFeatures(); renderOpts('island-opts', ISLAND); renderOpts('friday-opts', ASSIST_OPTS); renderPerms(); }
+function render() {
+  const c = cfg.island, rs = document.documentElement.style;
+  rs.setProperty('--orb1', c.orbC1);
+  rs.setProperty('--orb-ring', c.orbMode === 'solid' ? c.orbC1 : `conic-gradient(${c.orbC1}, ${c.orbC2}, ${c.orbC3}, ${c.orbC1})`);
+  renderFeatures(); renderOpts('island-opts', ISLAND); renderOpts('friday-opts', ASSIST_OPTS); renderPerms(); }
 
 document.getElementById('reset').onclick = () => window.orbit.configReset();
 window.orbit.onConfig((c) => { cfg = c; if (!document.activeElement || !['range', 'color'].includes(document.activeElement.type)) render(); });
