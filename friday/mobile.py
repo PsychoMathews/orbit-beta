@@ -170,7 +170,8 @@ def quick(text: str) -> tuple[str, str] | None:
         return f"Não tenho o número de {m.group('who')}. Adicione na nota Pessoas do cofre, ou peça direto à Siri.", ""
     # rota
     m = re.search(r"(?:me\s+leva|me\s+levar|leva(?:-me)?|rota|navega(?:r)?|vamos|bora)\s+(?:pra|para|at[eé]|ao|à|pro|no|na|a)\s+(?:o\s+|a\s+)?(?P<d>.+)$", t, re.I)
-    if m:
+    # Só endereço vai direto; lugar pelo nome ("restaurante tal em Pinheiros") segue para o Claude achar o endereço exato.
+    if m and re.search(r"\d|\b(rua|r\.|avenida|av\.?|alameda|al\.|estrada|rodovia|pra[cç]a|travessa|largo)\b", m.group("d"), re.I):
         d = m.group("d")
         return f"Rota para {d} no Waze.", "https://waze.com/ul?" + urllib.parse.urlencode({"q": d, "navigate": "yes"})
     # música ("... no PC" toca no computador; o resto, no celular)
@@ -499,6 +500,9 @@ async def siri(request: web.Request) -> web.Response:
     # Contexto vai no fim (texto começando com "[" o cérebro manda para o modelo local, que não serve aqui).
     ask = (f"{text}\n\n(Pedido por voz pelo atalho da Siri no celular: ele está longe do PC e pode estar dirigindo. "
            "'Abre X' é no celular (open_phone_app); rota é open_waze; música é spotify_play no celular. "
+           "Rota para um lugar pelo nome (restaurante, loja, academia): pesquise na internet o endereço exato (o ditado "
+           "pode ter escrito o nome errado, ex. 'Low Barbecue' = 'Low BBQ'), chame open_waze com rua, número, bairro e cidade, "
+           "e diga o nome e a rua na resposta. Casa e trabalho: os endereços salvos da ferramenta traffic. "
            "Não abra nada no PC. Responda curto, para ser falado.)")
     try:
         reply, _ = await asyncio.wait_for(brain.ask(config.OWNER_ID, ask, spoken=True, channel="telegram"), 50)
@@ -508,6 +512,9 @@ async def siri(request: web.Request) -> web.Response:
         log.exception("Atalho da Siri: erro ao responder")
         reply = "Tive um problema pra responder agora. Tenta de novo daqui a pouco."
     url, _action["url"] = _action["url"], ""
+    # Nada de rodapé de fontes nem links da pesquisa na fala ("Sources: [BaresSP](...)").
+    reply = re.split(r"\n?\s*(?:Sources|Fontes)\s*:", reply or "", maxsplit=1, flags=re.I)[0]
+    reply = re.sub(r"\[([^\]]+)\]\([^)]*\)?", r"\1", reply).strip()
     out = {"fala": speech.for_speech(reply or "Feito.")}
     if b.get("voz"):  # só se o Atalho pedir ("voz": true): gerar o áudio leva 1 a 3 s
         audio = await _siri_voice(reply or "Feito.", request.headers.get("X-Forwarded-Host") or request.host)

@@ -735,11 +735,11 @@ view({
       const box = $('#siri-card'); let info;
       try { info = await api('/siri-info' + (renew ? '?renova=1' : '')); } catch { box.innerHTML = '<div class="faint">Sem conexão com o PC.</div>'; return; }
       const copy = (v, what) => `<button class="btn" style="height:36px;flex:none" data-copy="${esc(v)}">${icon('copy', 15)} ${what}</button>`;
-      box.innerHTML = `<div class="dim" style="margin-bottom:12px">Diga <b>"E aí Siri, Chama Friday"</b>, faça o pedido e ouça a resposta no iPhone (ou no rádio do carro). Waze e Spotify abrem sozinhos quando o pedido for sobre eles.</div>
+      box.innerHTML = `<div class="dim" style="margin-bottom:12px">Diga <b>"Hey Siri, Friday"</b>, faça o pedido e ouça a resposta no iPhone (ou no rádio do carro). Waze e Spotify abrem sozinhos quando o pedido for sobre eles.</div>
         <div class="row" style="gap:8px;margin-bottom:14px">${copy(info.url, 'Endereço')}${copy(info.token, 'Senha')}<button class="btn danger" style="height:36px;flex:none" data-renew title="Gera outra senha (o atalho antigo para de funcionar)">${icon('broom', 15)}</button></div>
         <div class="label" style="margin-bottom:8px">Montar no app Atalhos (uma vez)</div>
         <ol class="steps">
-          <li>Novo atalho, com o nome <b>Chama Friday</b>.</li>
+          <li>Novo atalho, com o nome <b>Friday</b> (sem "chama" ou "liga": a Siri entende como ligação).</li>
           <li><b>Dictate Text</b> (Portuguese (Brazil), Stop Listening: After Pause).</li>
           <li><b>Get Contents of URL</b>: cole o <b>Endereço</b>; Method <b>POST</b>; Header <b>X-Orbit-Token</b> = a <b>Senha</b>; Request Body <b>JSON</b> com o campo <b>texto</b> = Dictated Text.</li>
           <li><b>Get Dictionary Value</b>: chave <b>audio</b> in Contents of URL → <b>Get Contents of URL</b> com esse valor (GET) → <b>Play Sound</b>.</li>
