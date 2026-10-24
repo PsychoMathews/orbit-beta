@@ -25,13 +25,15 @@ body { display: flex; flex-direction: column; height: 100dvh; background: transp
 /* A Friday atrás do app: o orbe dela (o mesmo anel de energia da ilha), grande e desfocado, em todas as abas.
    Parado, gira devagar e quase some; quando ela fala ou você fala, cresce e brilha com o volume da voz (--lv),
    e um clarão das cores dela se espalha pela tela. Desenhado em canvas por app.js (orbBg). */
-#orb-bg { position: fixed; left: 50%; top: 46%; width: min(118vw, 118vh); aspect-ratio: 1; z-index: -1; pointer-events: none;
-  transform: translate(-50%, -50%) scale(calc(1 + var(--lv, 0) * .12)); filter: blur(26px) saturate(150%);
-  opacity: calc(.42 + var(--lv, 0) * .5); transition: opacity .35s ease, transform .35s ease;
-  animation: orb-turn 48s linear infinite, orb-breathe 7s ease-in-out infinite; }
-/* Vivo mesmo parado: gira devagar e respira (rotate/scale separados do transform, que segue a voz) */
+/* Sempre inteiro na tela e no mesmo lugar: a vida vem dos fios oscilando, do brilho e de uma respiração curta.
+   A voz (--lv) deixa ele mais claro e mais instável, nunca maior (o tamanho fica travado dentro da tela). */
+#orb-bg { --size: min(96vw, 62vh); position: fixed; left: calc(50% - var(--size) / 2); top: calc(46% - var(--size) / 2);
+  width: var(--size); height: var(--size); z-index: -1; pointer-events: none; /* centro por posição: girar não desloca */
+  filter: blur(24px) saturate(150%) brightness(calc(1 + var(--lv, 0) * .5));
+  opacity: calc(.45 + var(--lv, 0) * .45); transition: opacity .3s ease, filter .3s ease;
+  animation: orb-turn 40s linear infinite, orb-breathe 5.5s ease-in-out infinite; }
 @keyframes orb-turn { to { rotate: 360deg; } }
-@keyframes orb-breathe { 50% { scale: 1.06; } }
+@keyframes orb-breathe { 0%, 100% { scale: 1; } 50% { scale: 1.025; } }
 @media (prefers-reduced-motion: reduce) { #orb-bg { animation: none; } }
 #orb-flash { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: calc(var(--lv, 0) * .55); transition: opacity .25s ease;
   background: radial-gradient(70% 55% at 50% 46%, color-mix(in srgb, var(--accent2) 45%, transparent), transparent 70%); mix-blend-mode: screen; }
