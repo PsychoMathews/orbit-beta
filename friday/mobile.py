@@ -83,10 +83,19 @@ def action(url: str) -> None:
     _action["url"] = url
 
 
+def with_city(address: str) -> str:
+    """Endereço sem cidade ganha a cidade dele (HOME_CITY): rua com nome repetido em outra cidade levava ao lugar errado."""
+    from . import config
+    city = config.HOME_CITY
+    if not city or city.casefold() in address.casefold() or re.search(r",\s*[A-Za-zÀ-ÿ .]+\s*[-/]\s*[A-Z]{2}\b|\b(SP|RJ|MG|PR|SC|RS|BA)\b", address):
+        return address
+    return f"{address}, {city}"
+
+
 def open_waze(destino: str) -> str:
     """Para a IA: rota no Waze do celular."""
     import urllib.parse
-    action("https://waze.com/ul?" + urllib.parse.urlencode({"q": destino, "navigate": "yes"}))
+    action("https://waze.com/ul?" + urllib.parse.urlencode({"q": with_city(destino), "navigate": "yes"}))
     return f"Rota para {destino} pronta: o Waze abre no celular."
 
 
@@ -201,7 +210,7 @@ def quick(text: str) -> tuple[str, str] | None:
     # Só endereço vai direto; lugar pelo nome ("restaurante tal em Pinheiros") segue para o Claude achar o endereço exato.
     if m and re.search(r"\d|\b(rua|r\.|avenida|av\.?|alameda|al\.|estrada|rodovia|pra[cç]a|travessa|largo)\b", m.group("d"), re.I):
         d = m.group("d")
-        return f"Rota para {d} no Waze.", "https://waze.com/ul?" + urllib.parse.urlencode({"q": d, "navigate": "yes"})
+        return f"Rota para {d} no Waze.", "https://waze.com/ul?" + urllib.parse.urlencode({"q": with_city(d), "navigate": "yes"})
     # música ("... no PC" toca no computador; o resto, no celular)
     where = "celular"
     pc = re.search(r"\s+(?:no|pelo)\s+(?:pc|computador)$", t, re.I)
@@ -524,6 +533,9 @@ async def siri(request: web.Request) -> web.Response:
     hit = await asyncio.to_thread(quick, text)
     if hit:  # comando direto: responde na hora
         log.info("Atalho da Siri (rápido): %s -> %s", text[:80], hit[1][:60])
+        # No histórico também, para ela saber depois o que abriu ("você me mandou pro endereço errado").
+        from . import brain, config
+        brain.record(config.OWNER_ID, text, hit[0] + (f" (abri no celular: {hit[1]})" if hit[1] else ""))
         out = {"fala": hit[0]}
         if hit[1]:
             out["abrir"] = hit[1]
