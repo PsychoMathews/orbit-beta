@@ -501,7 +501,9 @@ TOOL_GROUPS = {
               ["add_expense", "expense_summary", "remove_last_expense"]),
     "media": (r"m[uú]sica|faixa|\bfila\b|spotify|volume|\bpausa|\btoca\b|\bplay\b|mais alto|mais baixo|\bmut|^\s*(abre|abrir|inicia)\b|"
               r"programa|aplicativo|\bapp\b|modo trabalho",
-              ["media_control", "open_app", "list_apps", "work_mode", "spotify_queue"]),
+              ["media_control", "open_app", "list_apps", "work_mode", "spotify_queue", "spotify_play"]),
+    "waze": (r"\bwaze\b|me leva|rota (pra|para|at[eé])|navega|como chego|endere[cç]o",
+             ["open_waze", "traffic"]),
     "pc": (r"computador|\bpc\b|mem[oó]ria ram|\bram\b|\bdisco|espa[cç]o|lixo|limpa|\bpasta|arquivo|downloads|"
            r"tempor[aá]ri|lento|pesado|processo|\bfecha|comando|powershell",
            ["system_status", "list_folder", "folder_sizes", "find_large_files", "open_path",

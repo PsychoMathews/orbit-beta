@@ -197,6 +197,77 @@ def play_from_queue(uri: str, context: str = "") -> str:
     return "Não achei essa música na fila."
 
 
+def _devices() -> list:
+    return (_api("GET", "/me/player/devices") or {}).get("devices", [])
+
+
+def play(query: str, where: str = "celular") -> tuple[str, str]:
+    """Toca agora (música, artista ou playlist) no aparelho pedido. Devolve (mensagem, uri).
+
+    where: "celular" (o Spotify do iPhone), "pc" ou "" (o que estiver tocando). Se o Spotify do celular estiver
+    fechado, devolve a uri para o Atalho abrir o app; a música começa assim que ele aparece (tentativa em segundo plano)."""
+    import threading
+    q = query.strip()
+    kind = "playlist" if "playlist" in q.lower() else "artist,track"
+    r = _api("GET", "/search", {"q": q.replace("playlist", "").strip() or q, "type": kind, "limit": 3, "market": "from_token"})
+    artists = [a for a in (r.get("artists") or {}).get("items", []) if a]
+    tracks = [t for t in (r.get("tracks") or {}).get("items", []) if t]
+    lists = [p for p in (r.get("playlists") or {}).get("items", []) if p]
+    if lists:
+        body, uri, label = {"context_uri": lists[0]["uri"]}, lists[0]["uri"], f"a playlist {lists[0]['name']}"
+    elif artists and artists[0]["name"].casefold() == q.casefold():
+        body, uri, label = {"context_uri": artists[0]["uri"]}, artists[0]["uri"], artists[0]["name"]
+    elif tracks:
+        t = _track(tracks[0])
+        body, uri, label = {"uris": [t["uri"]]}, t["uri"], f"{t['name']}, de {t['artist']}"
+    elif artists:
+        body, uri, label = {"context_uri": artists[0]["uri"]}, artists[0]["uri"], artists[0]["name"]
+    else:
+        return f"Não achei {q} no Spotify.", ""
+
+    def pick(devs):
+        if where == "celular":
+            return next((d for d in devs if d.get("type") == "Smartphone"), None)
+        if where == "pc":
+            return next((d for d in devs if d.get("type") == "Computer"), None)
+        return next((d for d in devs if d.get("is_active")), devs[0] if devs else None)
+
+    def start(dev) -> None:
+        _api_json("PUT", "/me/player/play?device_id=" + urllib.parse.quote(dev["id"]), body)
+
+    dev = pick(_devices())
+    if dev:
+        start(dev)
+        return f"Tocando {label}.", uri
+
+    def later() -> None:  # o Atalho abriu o Spotify: assim que o celular aparecer na conta, começa a tocar
+        for _ in range(20):
+            time.sleep(1)
+            try:
+                d = pick(_devices())
+                if d:
+                    start(d)
+                    return
+            except Exception:
+                log.debug("Spotify ainda sem o aparelho", exc_info=True)
+    threading.Thread(target=later, daemon=True).start()
+    return f"Abrindo o Spotify para tocar {label}.", uri
+
+
+def spotify_play(pedido: str, onde: str = "celular") -> str:
+    """Para a IA: toca agora no Spotify."""
+    from . import mobile
+    try:
+        msg, uri = play(pedido, onde)
+    except RuntimeError as e:
+        return str(e)
+    except urllib.error.HTTPError as e:
+        return "O Spotify recusou: precisa de conta Premium para tocar por comando." if e.code == 403 else f"O Spotify recusou ({e.code})."
+    if uri and msg.startswith("Abrindo"):
+        mobile.action(uri)  # o Atalho da Siri abre o app do Spotify no celular
+    return msg
+
+
 def spotify_queue(query: str = "") -> str:
     """Para a IA: sem query = diz o que vem na fila; com query = põe na fila."""
     if query:
@@ -210,8 +281,12 @@ def spotify_queue(query: str = "") -> str:
     return "Próximas no Spotify: " + "; ".join(f"{t['name']} ({t['artist']})" for t in q["queue"][:5]) + "."
 
 
-TOOLS = {"spotify_queue": spotify_queue}
+TOOLS = {"spotify_queue": spotify_queue, "spotify_play": spotify_play}
 SCHEMAS = [
+    fn("spotify_play", "Toca AGORA no Spotify uma música, artista ou playlist ('toca Racionais', 'coloca minha playlist de treino'). "
+       "Por padrão no celular (ele pode estar no carro); 'onde' = 'pc' só se ele pedir no computador.",
+       {"pedido": {"type": "string", "description": "música, artista ou 'playlist ...'"},
+        "onde": {"type": "string", "enum": ["celular", "pc"]}}, ["pedido"]),
     fn("spotify_queue", "Fila do Spotify: sem query diz as próximas músicas; com query procura e põe a música na fila "
        "('coloca Bohemian Rhapsody na fila').", {"query": {"type": "string", "description": "Música e/ou artista"}}),
 ]

@@ -75,14 +75,41 @@ def new_code() -> str:
     return code
 
 
+# Ação para o celular executar depois de falar a resposta (o Atalho da Siri abre este link: Waze, Spotify...).
+_action = {"url": ""}
+
+
+def action(url: str) -> None:
+    _action["url"] = url
+
+
+def open_waze(destino: str) -> str:
+    """Para a IA: rota no Waze do celular."""
+    import urllib.parse
+    action("https://waze.com/ul?" + urllib.parse.urlencode({"q": destino, "navigate": "yes"}))
+    return f"Rota para {destino} pronta: o Waze abre no celular."
+
+
+def siri_token(new: bool = False) -> str:
+    """Senha do Atalho da Siri (fica só neste PC e no Atalho)."""
+    s = _load()
+    if new or not s.get("siri_token"):
+        s["siri_token"] = secrets.token_urlsafe(24)
+        _save(s)
+    return s["siri_token"]
+
+
 def phone_pair() -> str:
     """Ferramenta: código para parear o app do celular."""
     return (f"Código para parear o Orbit no celular: {new_code()} (vale 15 minutos). Abra o app instalado na tela "
             "inicial e digite o código.")
 
 
-TOOLS = {"phone_pair": phone_pair}
-SCHEMAS = [fn("phone_pair", "Gera o código para parear (conectar) o app Orbit do celular com a assistente.", {}, [])]
+TOOLS = {"phone_pair": phone_pair, "open_waze": open_waze}
+SCHEMAS = [fn("phone_pair", "Gera o código para parear (conectar) o app Orbit do celular com a assistente.", {}, []),
+           fn("open_waze", "Abre o Waze no CELULAR com a rota para um endereço ou lugar ('me leva pra casa da minha mãe', "
+              "'abre o Waze na Av. Paulista 1000'). Use quando ele está fora do PC ou dirigindo.",
+              {"destino": {"type": "string", "description": "endereço ou nome do lugar"}}, ["destino"])]
 
 
 # ---------- Cores da assistente (as mesmas do orbe da ilha, escolhidas nas Configurações do Orbit) ----------
@@ -248,6 +275,10 @@ def _on_event(ev: dict) -> None:
 async def _guard(request: web.Request, handler):
     if not request.path.startswith("/api/") or request.path == "/api/pair":
         return await handler(request)
+    if request.path == "/api/siri":  # Atalho da Siri: senha própria no cabeçalho, sem cookie
+        if secrets.compare_digest(request.headers.get("X-Orbit-Token", ""), _load().get("siri_token") or "-"):
+            return await handler(request)
+        return web.json_response({"fala": "O atalho está com a senha errada. Pegue a senha nova nos Ajustes do Orbit."}, status=401)
     token = request.cookies.get(COOKIE, "")
     if not token or _hash(token) not in _load()["devices"]:
         return web.json_response({"ok": False, "erro": "não pareado"}, status=401)
@@ -313,6 +344,33 @@ async def _answer(text: str, want_voice: bool, brain, config, voice) -> dict:
         except Exception:
             log.exception("Celular: resposta sem voz")
     return out
+
+
+async def siri(request: web.Request) -> web.Response:
+    """Atalho "Chama Friday": recebe o que você ditou e devolve o que a Siri deve falar e, se houver, o link a abrir
+    (Waze com a rota, Spotify). A voz sai do iPhone: o PC não fala nada."""
+    from . import brain, config, speech
+    try:
+        b = await request.json()
+    except Exception:
+        b = {}
+    text = str(b.get("texto") or b.get("text") or "").strip()[:1000]
+    if not text:
+        return web.json_response({"fala": "Não ouvi nada. Pode repetir?", "abrir": ""})
+    _action["url"] = ""
+    try:
+        reply, _ = await asyncio.wait_for(brain.ask(config.OWNER_ID, "[pelo celular, por voz: ele pode estar dirigindo] " + text,
+                                                     spoken=True, channel="telegram"), 50)
+    except asyncio.TimeoutError:
+        reply = "Demorei demais pra pensar. Tenta de novo?"
+    url, _action["url"] = _action["url"], ""
+    return web.json_response({"fala": speech.for_speech(reply or "Feito."), "abrir": url})
+
+
+async def siri_info(request: web.Request) -> web.Response:
+    """Para os Ajustes do app: endereço e senha do Atalho (renova=1 troca a senha)."""
+    host = request.headers.get("X-Forwarded-Host") or request.host
+    return web.json_response({"url": f"https://{host}/api/siri", "token": siri_token(request.query.get("renova") == "1")})
 
 
 async def voice_in(request: web.Request) -> web.Response:
@@ -631,6 +689,8 @@ async def start() -> None:
     r.add_get("/api/me", me)
     r.add_get("/api/events", orbit.events)
     r.add_post("/api/ask", ask)
+    r.add_post("/api/siri", siri)
+    r.add_get("/api/siri-info", siri_info)
     r.add_post("/api/voice", voice_in)
     r.add_get("/api/feed", feed_get)
     r.add_post("/api/prefs", prefs_post)

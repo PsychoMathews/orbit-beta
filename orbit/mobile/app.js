@@ -701,6 +701,7 @@ view({
         <div class="row"><button class="btn primary" id="push-on" ${!standalone ? 'disabled' : ''}>Ativar avisos</button><button class="btn" id="push-test">Testar</button></div>
         <div class="row"><div style="flex:1"><div>Avisar mesmo com o PC em uso</div><div class="faint">Desligado: só manda pro celular quando você está longe do PC.</div></div>
           <button class="switch ${me.always_push ? 'on' : ''}" id="always"></button></div></div>`
+      + `<div class="sec">Atalho da Siri</div><div class="card" id="siri-card"><div class="faint">Carregando…</div></div>`
       + `<div class="sec">Permissões</div><div class="list">${perms.map(([ic, t, st, d]) => `<div class="item" style="align-items:flex-start"><span class="well">${icon(ic, 18)}</span>
           <div class="grow"><div class="row"><b style="flex:1">${t}</b><span class="chip">${st}</span></div><div class="faint" style="margin-top:4px;white-space:normal">${d}</div></div></div>`).join('')}</div>
         <div class="row" style="margin-top:12px;gap:8px"><a class="btn" style="flex:1" href="https://psychomathews.github.io/orbit/privacidade.html" target="_blank" rel="noopener">Privacidade</a>
@@ -729,6 +730,29 @@ view({
       }
       save(o);
     };
+    // Atalho da Siri: endereço e senha para copiar, e os passos no app Atalhos
+    const siriCard = async (renew) => {
+      const box = $('#siri-card'); let info;
+      try { info = await api('/siri-info' + (renew ? '?renova=1' : '')); } catch { box.innerHTML = '<div class="faint">Sem conexão com o PC.</div>'; return; }
+      const copy = (v, what) => `<button class="btn" style="height:36px;flex:none" data-copy="${esc(v)}">${icon('copy', 15)} ${what}</button>`;
+      box.innerHTML = `<div class="dim" style="margin-bottom:12px">Diga <b>"E aí Siri, Chama Friday"</b>, faça o pedido e ouça a resposta no iPhone (ou no rádio do carro). Waze e Spotify abrem sozinhos quando o pedido for sobre eles.</div>
+        <div class="row" style="gap:8px;margin-bottom:14px">${copy(info.url, 'Endereço')}${copy(info.token, 'Senha')}<button class="btn danger" style="height:36px;flex:none" data-renew title="Gera outra senha (o atalho antigo para de funcionar)">${icon('broom', 15)}</button></div>
+        <div class="label" style="margin-bottom:8px">Montar no app Atalhos (uma vez)</div>
+        <ol class="steps">
+          <li>Novo atalho, com o nome <b>Chama Friday</b>.</li>
+          <li><b>Ditar Texto</b> (idioma Português, parar ao fazer pausa).</li>
+          <li><b>Obter Conteúdo do URL</b>: cole o <b>Endereço</b>; Método <b>POST</b>; Cabeçalho <b>X-Orbit-Token</b> = a <b>Senha</b>; Corpo <b>JSON</b> com o campo <b>texto</b> = Texto Ditado.</li>
+          <li><b>Obter Valor do Dicionário</b>: chave <b>fala</b> → depois <b>Falar Texto</b> com o valor.</li>
+          <li><b>Obter Valor do Dicionário</b>: chave <b>abrir</b> do Conteúdo do URL → <b>Se</b> tem algum valor → <b>Abrir URLs</b>.</li>
+        </ol>`;
+      box.querySelectorAll('[data-copy]').forEach((b) => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copiado.'); } catch { toast(b.dataset.copy, 8000); } });
+      $('[data-renew]', box).onclick = (e) => {
+        const btn = e.currentTarget;
+        if (!btn.dataset.armed) { btn.dataset.armed = '1'; toast('Toque de novo para gerar outra senha (o atalho atual para de funcionar).'); setTimeout(() => delete btn.dataset.armed, 3000); return; }
+        siriCard(true).then(() => toast('Senha nova. Atualize o atalho.'));
+      };
+    };
+    siriCard(false);
     // notificações e aparelho
     $('#push-on').onclick = () => enablePush();
     $('#push-test').onclick = async () => { const r = await post('/push/test').catch(() => null); toast(r?.ok ? 'Mandei um aviso de teste.' : 'Nenhum aparelho com avisos ligados.'); };
