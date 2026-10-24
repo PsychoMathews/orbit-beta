@@ -697,6 +697,40 @@ async function badge() {
 }
 
 // ---------- Ao vivo (mesmos eventos da ilha) ----------
+// O orbe da Friday atrás do app: fios de luz ondulando em volta de um círculo, somando brilho (como na ilha do PC).
+const orbBg = {
+  t: 0, last: 0,
+  start() { requestAnimationFrame((t) => this.frame(t)); },
+  frame(now) {
+    requestAnimationFrame((t) => this.frame(t));
+    const active = island.st !== 'idle';
+    if (!active && now - this.last < 66) return; // parado: ~15 quadros/s bastam (economiza bateria)
+    const dt = Math.min(0.1, (now - (this.last || now)) / 1000); this.last = now;
+    const lv = active ? +(getComputedStyle(document.documentElement).getPropertyValue('--lv') || 0) : 0;
+    this.t += dt * (active ? 1.6 + lv * 3 : 0.35);
+    const cv = $('#orb-bg'), S = 256;
+    if (cv.width !== S) { cv.width = cv.height = S; }
+    const g = cv.getContext('2d'), c = S / 2, R = S * 0.3, cs = getComputedStyle(document.documentElement);
+    g.clearRect(0, 0, S, S);
+    const cg = g.createConicGradient(this.t * 0.4, c, c);
+    ['--accent', '--accent2', '--accent3', '--accent'].forEach((v, i) => cg.addColorStop(i / 3, cs.getPropertyValue(v).trim()));
+    g.globalCompositeOperation = 'lighter'; g.strokeStyle = cg;
+    const energy = 0.7 + lv * 2.6 + (island.st === 'thinking' ? 0.6 : 0);
+    for (let k = 0; k < 9; k++) {
+      const ph = k * 0.7, sp = 0.5 + k * 0.13; g.beginPath();
+      for (let i = 0; i <= 96; i++) {
+        const a = i / 96 * Math.PI * 2;
+        const off = (Math.sin(a * 2 + this.t * sp + ph) * 1.6 + Math.sin(a * 3 - this.t * sp * 0.8 + ph * 2) * 1.1 + Math.sin(a * 5 + this.t * 1.3 + k)) * energy * S / 64;
+        const r = R + off * (k % 3 === 0 ? 0.4 : 1), x = c + Math.cos(a) * r, y = c + Math.sin(a) * r;
+        i ? g.lineTo(x, y) : g.moveTo(x, y);
+      }
+      g.globalAlpha = k === 0 ? 0.95 : 0.3; g.lineWidth = (k === 0 ? 7 : 3.5) * (1 + lv); g.stroke();
+    }
+    g.globalAlpha = 0.25; g.lineWidth = 26; g.beginPath(); g.arc(c, c, R, 0, 7); g.stroke();
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  },
+};
+
 function applyColors(c) {
   if (!c) return;
   const r = document.documentElement.style, solid = c.mode === 'solid';
@@ -749,6 +783,7 @@ function showPair() {
   document.title = 'Orbit';
   applyColors(me.cores);
   island.set('idle');
+  orbBg.start();
   buildTabs();
   go(location.hash.slice(1) || 'sexta');
   live();

@@ -22,22 +22,14 @@ html, body { margin: 0; height: 100%; color: var(--fg); overscroll-behavior: non
 /* Fundo escuro em tudo (inclusive atrás da barra de abas e do indicador de início do iPhone). */
 html { background: linear-gradient(180deg, #0b0f16, var(--bg)) var(--bg); min-height: 100%; }
 body { display: flex; flex-direction: column; height: 100dvh; background: transparent; } /* fundo no html: a aura (z-index -1) fica por cima dele */
-/* Aura: a luz nasce do orbe, lá no topo, e dá ao vidro algo para desfocar. Parada, quase some e se move devagar;
-   ouvindo/falando, cresce com o volume da voz (--lv, de 0 a 1, vem do app.js) e as cores giram. */
-#aura { position: fixed; left: 50%; top: -18vh; width: 150vw; height: 95vh; transform: translateX(-50%); z-index: -1; pointer-events: none;
-  filter: blur(70px) saturate(130%); opacity: calc(.32 + var(--lv, 0) * .6); transition: opacity .5s ease; }
-#aura i { position: absolute; border-radius: 50%; mix-blend-mode: screen; animation: drift 22s ease-in-out infinite alternate; }
-#aura i:nth-child(1) { width: 60%; height: 55%; left: 20%; top: 10%; background: var(--accent); }
-#aura i:nth-child(2) { width: 45%; height: 45%; left: 45%; top: 22%; background: var(--accent2); animation-duration: 28s; animation-delay: -9s; opacity: .7; }
-#aura i:nth-child(3) { width: 40%; height: 40%; left: 12%; top: 30%; background: var(--accent3); animation-duration: 34s; animation-delay: -17s; opacity: .5; }
-@keyframes drift { 0% { transform: translate(-6%, -4%) scale(1); } 50% { transform: translate(5%, 4%) scale(1.08); } 100% { transform: translate(-3%, 6%) scale(.94); } }
-#aura .spin { position: absolute; inset: 0; animation: none; }
-body[data-st="listening"] #aura .spin, body[data-st="speaking"] #aura .spin { animation: auraspin 9s linear infinite; }
-body[data-st="thinking"] #aura { animation: breathe 2.4s ease-in-out infinite; }
-body[data-st="listening"] #aura i, body[data-st="speaking"] #aura i { animation-duration: 6s; }
-@keyframes auraspin { to { transform: rotate(360deg); } }
-@keyframes breathe { 50% { opacity: .62; } }
-@media (prefers-reduced-motion: reduce) { #aura i, #aura .spin, #aura { animation: none !important; } }
+/* A Friday atrás do app: o orbe dela (o mesmo anel de energia da ilha), grande e desfocado, em todas as abas.
+   Parado, gira devagar e quase some; quando ela fala ou você fala, cresce e brilha com o volume da voz (--lv),
+   e um clarão das cores dela se espalha pela tela. Desenhado em canvas por app.js (orbBg). */
+#orb-bg { position: fixed; left: 50%; top: 46%; width: min(118vw, 118vh); aspect-ratio: 1; z-index: -1; pointer-events: none;
+  transform: translate(-50%, -50%) scale(calc(1 + var(--lv, 0) * .12)); filter: blur(26px) saturate(150%);
+  opacity: calc(.42 + var(--lv, 0) * .5); transition: opacity .35s ease, transform .35s ease; }
+#orb-flash { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: calc(var(--lv, 0) * .55); transition: opacity .25s ease;
+  background: radial-gradient(70% 55% at 50% 46%, color-mix(in srgb, var(--accent2) 45%, transparent), transparent 70%); mix-blend-mode: screen; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 .ico { display: block; flex: none; }
 [hidden] { display: none !important; }
