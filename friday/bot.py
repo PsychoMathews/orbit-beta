@@ -8,7 +8,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
-from . import alexa, brain, claude_agent, config, delivery, vault, desktop, gamemode, hub, memory, orbit, winsys, proactive, tools, voice
+from . import alexa, brain, claude_agent, config, delivery, vault, desktop, gamemode, hub, memory, mobile, orbit, winsys, proactive, tools, voice
 from .paths import MEMORIA
 from . import assistente
 from .assistente import personalizar
@@ -240,6 +240,10 @@ async def _on_startup(app) -> None:
         await orbit.start(send_to_telegram)
     except Exception:
         log.exception("Feed do Orbit não pôde ser iniciado")
+    try:
+        await mobile.start()  # Orbit no celular (app web + push)
+    except Exception:
+        log.exception("App do celular não pôde ser iniciado")
     asyncio.get_running_loop().create_task(brain.warm_up())
     if True:  # antes só com Telegram; agora os avisos também vivem só na ilha e na voz do PC
         asyncio.get_running_loop().create_task(proactive.run(notify, ask_brain))

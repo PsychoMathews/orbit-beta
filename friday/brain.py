@@ -488,6 +488,8 @@ TOOL_GROUPS = {
               ["download_video", "analyze_link", "email_me", "note_add", "idea_add"]),
     "ideas": (_IDEA_PATTERN + r"|me lembr|anota",
               ["save_idea", "idea_add", "add_reminder", "note_add"]),
+    "phone": (r"\bparea|celular|iphone|app do orbit",
+              ["phone_pair"]),
     "email_me": (r"(manda|envia)\w* (pro|para o) meu e-?mail|me manda por e-?mail|no meu e-?mail",
                  ["email_me"]),
     "delivery": (r"\bprint|captura|\btela\b|me (manda|envia|mostra)|manda (aqui|pra mim|esse|o arquivo|o v[ií]deo)|anexo|arquivo",

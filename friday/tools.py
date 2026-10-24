@@ -8,7 +8,7 @@ import re
 import uuid
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
-from . import audio, claude_agent, clipboard, delivery, today, vault, finder, ideas, links, gamemode, hub, spotify, media, memory, money, orbit, pc, proactive, resolve, web, winsys
+from . import audio, claude_agent, clipboard, delivery, today, vault, finder, ideas, links, gamemode, hub, spotify, media, memory, mobile, money, orbit, pc, proactive, resolve, web, winsys
 from .google_auth import service
 from .tools_common import TZ, fn as _fn
 
@@ -162,7 +162,7 @@ READ_TOOLS = {
     "remember": memory.remember, "search_memory": memory.search,
     "system_status": pc.system_status, "list_folder": pc.list_folder, "folder_sizes": pc.folder_sizes,
     "find_large_files": pc.find_large_files, "cleanup_candidates": pc.cleanup_candidates, "open_path": pc.open_path,
-    **proactive.TOOLS, **web.TOOLS, **money.TOOLS, **media.TOOLS, **resolve.TOOLS, **claude_agent.TOOLS, **orbit.TOOLS, **hub.TOOLS, **winsys.TOOLS, **audio.TOOLS, **gamemode.TOOLS, **finder.TOOLS, **spotify.TOOLS, **clipboard.TOOLS, **links.TOOLS, **ideas.TOOLS, **delivery.TOOLS, **vault.TOOLS, **today.TOOLS,
+    **proactive.TOOLS, **web.TOOLS, **money.TOOLS, **media.TOOLS, **resolve.TOOLS, **claude_agent.TOOLS, **orbit.TOOLS, **hub.TOOLS, **winsys.TOOLS, **audio.TOOLS, **gamemode.TOOLS, **finder.TOOLS, **spotify.TOOLS, **clipboard.TOOLS, **links.TOOLS, **ideas.TOOLS, **delivery.TOOLS, **vault.TOOLS, **today.TOOLS, **mobile.TOOLS,
 }
 CONFIRM_TOOLS = {
     "create_event": _create_event, "send_email": _send_email,
@@ -330,4 +330,4 @@ GOOGLE_SCHEMAS = [
 ]
 
 # Módulos extras (lembretes, internet, dinheiro, mídia, DaVinci): ferramentas sempre disponíveis.
-EXTRA_SCHEMAS = [*proactive.SCHEMAS, *web.SCHEMAS, *money.SCHEMAS, *media.SCHEMAS, *resolve.SCHEMAS, *claude_agent.SCHEMAS, *orbit.SCHEMAS, *hub.SCHEMAS, *winsys.SCHEMAS, *audio.SCHEMAS, *gamemode.SCHEMAS, *finder.SCHEMAS, *spotify.SCHEMAS, *clipboard.SCHEMAS, *links.SCHEMAS, *ideas.SCHEMAS, *delivery.SCHEMAS, *vault.SCHEMAS, *today.SCHEMAS]
+EXTRA_SCHEMAS = [*proactive.SCHEMAS, *web.SCHEMAS, *money.SCHEMAS, *media.SCHEMAS, *resolve.SCHEMAS, *claude_agent.SCHEMAS, *orbit.SCHEMAS, *hub.SCHEMAS, *winsys.SCHEMAS, *audio.SCHEMAS, *gamemode.SCHEMAS, *finder.SCHEMAS, *spotify.SCHEMAS, *clipboard.SCHEMAS, *links.SCHEMAS, *ideas.SCHEMAS, *delivery.SCHEMAS, *vault.SCHEMAS, *today.SCHEMAS, *mobile.SCHEMAS]

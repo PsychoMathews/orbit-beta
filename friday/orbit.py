@@ -42,6 +42,7 @@ _state = {"state": "idle", "muted": False}
 _trigger = None  # função sem argumentos, definida pelo desktop.py
 _send_to_telegram = None
 _last_level = 0.0
+listeners: list = []  # funções chamadas a cada evento publicado (qualquer thread)
 
 
 def muted() -> bool:
@@ -53,6 +54,11 @@ def publish(event_type: str, **data) -> None:
     if event_type == "state":
         _state["state"] = data["state"]
     event = {"type": event_type, "t": time.time(), **data}
+    for fn_ in listeners:  # ex.: o app do celular (mobile.py) manda push dos avisos
+        try:
+            fn_(event)
+        except Exception:
+            log.exception("Ouvinte do Orbit falhou")
     if _loop is None or not _clients:
         return
     try:
