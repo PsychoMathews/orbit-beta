@@ -112,6 +112,105 @@ def open_phone_app(app: str) -> str:
     return f"Abrindo {app} no celular."
 
 
+# ---------- Atalho: comandos diretos respondidos na hora, sem o Claude pensar ----------
+
+
+def _people() -> dict:
+    """Números da nota Pessoas do cofre: linhas "- **Nome**: ... Tel: +55 11 91234-5678"."""
+    from . import vault
+    out = {}
+    try:
+        for line in (vault.VAULT / "Pessoas.md").read_text(encoding="utf-8").splitlines():
+            m = re.match(r"\s*-\s*\*\*(.+?)\*\*", line)
+            tel = re.search(r"(?:tel|telefone|celular|whats(?:app)?|n[uú]mero)\s*:?\s*(\+?[\d\s().-]{8,})", line, re.I)
+            if m and tel:
+                digits = re.sub(r"\D", "", tel.group(1))
+                out[m.group(1).strip()] = digits if len(digits) > 11 else "55" + digits  # sem DDI: Brasil
+    except Exception:
+        log.debug("Pessoas sem números", exc_info=True)
+    return out
+
+
+def _person(name: str) -> tuple[str, str] | None:
+    want = name.strip().casefold()
+    people = _people()
+    hit = next((k for k in people if k.casefold() == want), None) or next((k for k in people if k.casefold().startswith(want) or want in k.casefold()), None)
+    return (hit, people[hit]) if hit else None
+
+
+def quick(text: str) -> tuple[str, str] | None:
+    """(fala, abrir) para pedidos diretos; None = segue para o Claude."""
+    import urllib.parse
+    from . import spotify
+    t = re.sub(r"^\s*(sexta[- ]feira|friday|fala friday|chama friday)[,!.\s]*", "", text.strip(), flags=re.I).rstrip(" .!?")
+    low = t.casefold()
+    # mensagem: "manda uma mensagem pra Vitória dizendo que eu tô indo" (também "abre o whatsapp e manda...")
+    m = re.search(r"(?:manda|mande|envia|envie|mandar)\s+(?:uma\s+)?(?:mensagem|msg|zap|whats(?:app)?)\s+(?:no whats(?:app)?\s+)?(?:pra|para|pro|pros|pras)\s+(?:a\s+|o\s+)?"
+                  r"(?P<who>[\wÀ-ÿ]+)(?P<rest>.*)$", t, re.I)
+    if m:
+        # Sobrenome só se a palavra seguinte começar com maiúscula e não for conector ("Vitória dizendo que...").
+        who, rest = m.group("who"), m.group("rest")
+        nxt = re.match(r"\s+([A-ZÀ-Ý][\wÀ-ÿ]+)", rest)
+        if nxt and nxt.group(1).casefold() not in ("que", "dizendo", "falando", "e", "avisando", "diz", "fala"):
+            who, rest = f"{who} {nxt.group(1)}", rest[nxt.end():]
+        msg = re.sub(r"^[,\s]*(?:e\s+)?(?:(?:diz|dizendo|fala|falando|falar|dizer|avisa|avisando)\s+)?(?:que\s+)?", "", rest, flags=re.I).strip()
+        p = _person(who)
+        if not msg:
+            return f"O que eu digo para {who}?", ""
+        q = urllib.parse.quote(msg)
+        if p:
+            return f"Mensagem para {p[0]} pronta no WhatsApp. É só tocar em enviar.", f"whatsapp://send?phone={p[1]}&text={q}"
+        return f"Não tenho o número de {who}. Abri o WhatsApp com a mensagem: escolha a conversa.", f"whatsapp://send?text={q}"
+    # ligação
+    m = re.search(r"(?:liga|ligar|ligue|faz uma liga[cç][aã]o)\s+(?:pra|para|pro|com)\s+(?:a\s+|o\s+)?(?P<who>.+)$", t, re.I)
+    if m:
+        p = _person(m.group("who"))
+        if p:
+            return f"Ligando para {p[0]}.", f"tel:+{p[1]}"
+        return f"Não tenho o número de {m.group('who')}. Adicione na nota Pessoas do cofre, ou peça direto à Siri.", ""
+    # rota
+    m = re.search(r"(?:me\s+leva|me\s+levar|leva(?:-me)?|rota|navega(?:r)?|vamos|bora)\s+(?:pra|para|at[eé]|ao|à|pro|no|na|a)\s+(?:o\s+|a\s+)?(?P<d>.+)$", t, re.I)
+    if m:
+        d = m.group("d")
+        return f"Rota para {d} no Waze.", "https://waze.com/ul?" + urllib.parse.urlencode({"q": d, "navigate": "yes"})
+    # música ("... no PC" toca no computador; o resto, no celular)
+    where = "celular"
+    pc = re.search(r"\s+(?:no|pelo)\s+(?:pc|computador)$", t, re.I)
+    if pc:
+        where, t = "pc", t[:pc.start()]
+        low = t.casefold()
+    try:
+        m = re.search(r"(?:adiciona|adicione|coloca|coloque|p[oõ]e|bota)\s+(?P<q>.+?)\s+na\s+fila", t, re.I)
+        if m:
+            return spotify.add_to_queue(m.group("q")), ""
+        if (re.search(r"(minhas?\s+m[uú]sicas?(\s+(padr[aã]o|de sempre|curtidas))?|playlist\s+padr[aã]o|m[uú]sicas?\s+(padr[aã]o|de sempre|curtidas))\b", low)
+                and re.search(r"\b(toca|tocar|coloca|bota|p[oõ]e|abre)\b", low)):
+            msg, uri = spotify.play("", where, "default")
+            return msg, (uri if uri and msg.startswith("Abrindo") else "")
+        m = re.search(r"(?:toca|tocar|toque|coloca|coloque|bota|p[oõ]e)\s+(?:a\s+)?(?:minha\s+)?playlist\s+(?:de\s+|do\s+|da\s+)?(?P<q>.+)$", t, re.I)
+        if m:
+            msg, uri = spotify.play(m.group("q"), where, "playlist")
+            return msg, (uri if uri and msg.startswith("Abrindo") else "")
+        m = re.search(r"^(?:abre\s+o\s+spotify\s+e\s+)?(?:toca|tocar|toque|bota\s+pra\s+tocar|coloca\s+pra\s+tocar)\s+(?P<q>.+)$", t, re.I)
+        if m:
+            msg, uri = spotify.play(m.group("q"), where)
+            return msg, (uri if uri and msg.startswith("Abrindo") else "")
+    except RuntimeError as e:  # Spotify não conectado
+        return str(e), "spotify://"
+    except Exception as e:
+        code = getattr(e, "code", 0)
+        return ("O Spotify precisa de conta Premium para tocar por comando." if code == 403 else "O Spotify não respondeu agora."), "spotify://"
+    # abrir app
+    m = re.match(r"^(?:abre|abrir|abra|abri)\s+(?:o\s+|a\s+)?(?P<app>[\wÀ-ÿ ]+?)$", t, re.I)
+    if m:
+        name = m.group("app").strip()
+        key = name.casefold()
+        url = PHONE_APPS.get(key) or next((v for k, v in PHONE_APPS.items() if k == key.split()[0]), None)
+        if url:
+            return f"Abrindo {name}.", url
+    return None
+
+
 def siri_token(new: bool = False) -> str:
     """Senha do Atalho da Siri (fica só neste PC e no Atalho)."""
     s = _load()
@@ -386,6 +485,17 @@ async def siri(request: web.Request) -> web.Response:
     if not text:
         return web.json_response({"fala": "Não ouvi nada. Pode repetir?"})
     _action["url"] = ""
+    hit = await asyncio.to_thread(quick, text)
+    if hit:  # comando direto: responde na hora
+        log.info("Atalho da Siri (rápido): %s -> %s", text[:80], hit[1][:60])
+        out = {"fala": hit[0]}
+        if hit[1]:
+            out["abrir"] = hit[1]
+        if b.get("voz"):
+            audio = await _siri_voice(hit[0], request.headers.get("X-Forwarded-Host") or request.host)
+            if audio:
+                out["audio"] = audio
+        return web.json_response(out)
     # Contexto vai no fim (texto começando com "[" o cérebro manda para o modelo local, que não serve aqui).
     ask = (f"{text}\n\n(Pedido por voz pelo atalho da Siri no celular: ele está longe do PC e pode estar dirigindo. "
            "'Abre X' é no celular (open_phone_app); rota é open_waze; música é spotify_play no celular. "
@@ -399,9 +509,10 @@ async def siri(request: web.Request) -> web.Response:
         reply = "Tive um problema pra responder agora. Tenta de novo daqui a pouco."
     url, _action["url"] = _action["url"], ""
     out = {"fala": speech.for_speech(reply or "Feito.")}
-    audio = await _siri_voice(reply or "Feito.", request.headers.get("X-Forwarded-Host") or request.host)
-    if audio:  # o Atalho toca este áudio (voz dela) em vez de ler o texto com a voz do iPhone
-        out["audio"] = audio
+    if b.get("voz"):  # só se o Atalho pedir ("voz": true): gerar o áudio leva 1 a 3 s
+        audio = await _siri_voice(reply or "Feito.", request.headers.get("X-Forwarded-Host") or request.host)
+        if audio:
+            out["audio"] = audio
     if url:  # sem link, sem o campo: o Atalho entende "abrir" vazio como valor e tenta abrir um endereço em branco
         out["abrir"] = url
     return web.json_response(out)

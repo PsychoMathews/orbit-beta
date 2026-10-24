@@ -23,7 +23,9 @@ log = logging.getLogger("friday.spotify")
 TOKEN_FILE = MEMORIA / "spotify_token.json"
 CONF_FILE = MEMORIA / "spotify.json"
 REDIRECT = f"http://127.0.0.1:{os.getenv('ORBIT_PORT', '8788')}/orbit/spotify/callback"
-SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
+# playlist-read-*/user-library-read: tocar as SUAS playlists e as Músicas Curtidas (pedem reconectar a conta uma vez).
+SCOPES = ("user-read-playback-state user-modify-playback-state user-read-currently-playing "
+          "playlist-read-private playlist-read-collaborative user-library-read")
 
 _pending: dict[str, dict] = {}  # state -> {"verifier", "t"}
 
@@ -201,19 +203,68 @@ def _devices() -> list:
     return (_api("GET", "/me/player/devices") or {}).get("devices", [])
 
 
-def play(query: str, where: str = "celular") -> tuple[str, str]:
+def default_playlist() -> str:
+    """Nome da playlist padrão ("toca minhas músicas"); vazio = Músicas Curtidas."""
+    return _read(CONF_FILE).get("default_playlist", "")
+
+
+def set_default_playlist(name: str) -> str:
+    conf = _read(CONF_FILE)
+    conf["default_playlist"] = name.strip()
+    CONF_FILE.write_text(json.dumps(conf, ensure_ascii=False), encoding="utf-8")
+    return f"Playlist padrão: {name.strip() or 'Músicas Curtidas'}."
+
+
+def _my_playlist(name: str) -> dict | None:
+    """Procura entre as playlists da própria conta (nome igual primeiro, depois parecido)."""
+    want, found, url = name.casefold().strip(), [], "/me/playlists"
+    try:
+        for _ in range(4):  # até 200 playlists
+            r = _api("GET", url.replace("https://api.spotify.com/v1", ""), None if "?" in url else {"limit": 50})
+            found += [p for p in r.get("items", []) if p]
+            if not r.get("next"):
+                break
+            url = r["next"]
+    except urllib.error.HTTPError:
+        return None  # sem permissão de ler as playlists (conta conectada antes): cai na busca pública
+    return (next((p for p in found if p["name"].casefold() == want), None)
+            or next((p for p in found if want in p["name"].casefold()), None))
+
+
+def play(query: str, where: str = "celular", kind: str = "") -> tuple[str, str]:
     """Toca agora (música, artista ou playlist) no aparelho pedido. Devolve (mensagem, uri).
 
     where: "celular" (o Spotify do iPhone), "pc" ou "" (o que estiver tocando). Se o Spotify do celular estiver
     fechado, devolve a uri para o Atalho abrir o app; a música começa assim que ele aparece (tentativa em segundo plano)."""
     import threading
     q = query.strip()
-    kind = "playlist" if "playlist" in q.lower() else "artist,track"
-    r = _api("GET", "/search", {"q": q.replace("playlist", "").strip() or q, "type": kind, "limit": 3, "market": "from_token"})
-    artists = [a for a in (r.get("artists") or {}).get("items", []) if a]
-    tracks = [t for t in (r.get("tracks") or {}).get("items", []) if t]
-    lists = [p for p in (r.get("playlists") or {}).get("items", []) if p]
-    if lists:
+    if kind == "default":  # "toca minhas músicas": a playlist padrão ou as Músicas Curtidas
+        q, kind = default_playlist(), "playlist" if default_playlist() else "liked"
+    if kind == "liked":
+        try:
+            tr = _api("GET", "/me/tracks", {"limit": 50}).get("items", [])
+            uris = [x["track"]["uri"] for x in tr if x.get("track")]
+        except urllib.error.HTTPError:
+            uris = []
+        if not uris:
+            return "Não consegui ler suas Músicas Curtidas. Reconecte o Spotify nas Configurações do Orbit.", ""
+        import random
+        random.shuffle(uris)
+        body, uri, label = {"uris": uris}, "spotify:collection:tracks", "suas Músicas Curtidas"
+        artists = tracks = lists = None
+    else:
+        mine = _my_playlist(q) if kind == "playlist" else None
+        if mine:
+            artists, tracks, lists = [], [], [mine]
+        else:
+            stype = "playlist" if kind == "playlist" or "playlist" in q.lower() else "artist,track"
+            r = _api("GET", "/search", {"q": q.replace("playlist", "").strip() or q, "type": stype, "limit": 3, "market": "from_token"})
+            artists = [a for a in (r.get("artists") or {}).get("items", []) if a]
+            tracks = [t for t in (r.get("tracks") or {}).get("items", []) if t]
+            lists = [p for p in (r.get("playlists") or {}).get("items", []) if p]
+    if kind == "liked":
+        pass
+    elif lists:
         body, uri, label = {"context_uri": lists[0]["uri"]}, lists[0]["uri"], f"a playlist {lists[0]['name']}"
     elif artists and artists[0]["name"].casefold() == q.casefold():
         body, uri, label = {"context_uri": artists[0]["uri"]}, artists[0]["uri"], artists[0]["name"]
