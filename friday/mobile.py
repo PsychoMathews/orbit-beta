@@ -90,6 +90,28 @@ def open_waze(destino: str) -> str:
     return f"Rota para {destino} pronta: o Waze abre no celular."
 
 
+# Apps do iPhone que o Atalho consegue abrir (endereço próprio de cada app).
+PHONE_APPS = {
+    "spotify": "spotify://", "waze": "waze://", "whatsapp": "whatsapp://", "youtube": "youtube://",
+    "instagram": "instagram://", "telegram": "tg://", "mapas": "maps://", "maps": "maps://", "google maps": "comgooglemaps://",
+    "uber": "uber://", "99": "taxi99://", "ifood": "ifood://", "netflix": "nflx://", "gmail": "googlegmail://",
+    "x": "twitter://", "twitter": "twitter://", "notas": "mobilenotes://", "calendário": "calshow://", "agenda": "calshow://",
+    "música": "music://", "apple music": "music://", "podcasts": "podcasts://", "fotos": "photos-redirect://",
+    "câmera": "camera://", "relógio": "clock-alarm://", "ajustes": "app-settings:", "orbit": "",
+}
+
+
+def open_phone_app(app: str) -> str:
+    """Para a IA: abre um app no celular (quando ele fala pelo Atalho da Siri, longe do PC)."""
+    key = app.strip().lower().removeprefix("o ").removeprefix("a ")
+    url = PHONE_APPS.get(key) or next((v for k, v in PHONE_APPS.items() if k in key or key in k), None)
+    if url is None:
+        return f"Não sei abrir {app} no celular. Apps que eu abro: " + ", ".join(sorted({k for k in PHONE_APPS if k != 'orbit'})) + "."
+    if url:
+        action(url)
+    return f"Abrindo {app} no celular."
+
+
 def siri_token(new: bool = False) -> str:
     """Senha do Atalho da Siri (fica só neste PC e no Atalho)."""
     s = _load()
@@ -105,11 +127,14 @@ def phone_pair() -> str:
             "inicial e digite o código.")
 
 
-TOOLS = {"phone_pair": phone_pair, "open_waze": open_waze}
+TOOLS = {"phone_pair": phone_pair, "open_waze": open_waze, "open_phone_app": open_phone_app}
 SCHEMAS = [fn("phone_pair", "Gera o código para parear (conectar) o app Orbit do celular com a assistente.", {}, []),
            fn("open_waze", "Abre o Waze no CELULAR com a rota para um endereço ou lugar ('me leva pra casa da minha mãe', "
               "'abre o Waze na Av. Paulista 1000'). Use quando ele está fora do PC ou dirigindo.",
-              {"destino": {"type": "string", "description": "endereço ou nome do lugar"}}, ["destino"])]
+              {"destino": {"type": "string", "description": "endereço ou nome do lugar"}}, ["destino"]),
+           fn("open_phone_app", "Abre um app no CELULAR (Spotify, WhatsApp, YouTube, Instagram, Maps, Uber, iFood...). "
+              "Quando o pedido vem pelo atalho da Siri, 'abre X' é sempre no celular, nunca no PC.",
+              {"app": {"type": "string", "description": "nome do app"}}, ["app"])]
 
 
 # ---------- Cores da assistente (as mesmas do orbe da ilha, escolhidas nas Configurações do Orbit) ----------
@@ -362,7 +387,9 @@ async def siri(request: web.Request) -> web.Response:
         return web.json_response({"fala": "Não ouvi nada. Pode repetir?"})
     _action["url"] = ""
     # Contexto vai no fim (texto começando com "[" o cérebro manda para o modelo local, que não serve aqui).
-    ask = f"{text}\n\n(Pedido por voz pelo atalho da Siri no celular; ele pode estar dirigindo. Responda curto, para ser falado.)"
+    ask = (f"{text}\n\n(Pedido por voz pelo atalho da Siri no celular: ele está longe do PC e pode estar dirigindo. "
+           "'Abre X' é no celular (open_phone_app); rota é open_waze; música é spotify_play no celular. "
+           "Não abra nada no PC. Responda curto, para ser falado.)")
     try:
         reply, _ = await asyncio.wait_for(brain.ask(config.OWNER_ID, ask, spoken=True, channel="telegram"), 50)
     except asyncio.TimeoutError:
