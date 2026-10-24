@@ -162,6 +162,9 @@ def _person(name: str) -> tuple[str, str] | None:
     return (hit, people[hit]) if hit else None
 
 
+_waiting_msg = {"who": "", "t": 0.0}  # "O que eu digo para X?": a resposta seguinte vira a mensagem (por 2 min)
+
+
 def quick(text: str) -> tuple[str, str] | None:
     """(fala, abrir) para pedidos diretos; None = segue para o Claude."""
     import urllib.parse
@@ -180,6 +183,7 @@ def quick(text: str) -> tuple[str, str] | None:
         msg = re.sub(r"^[,\s]*(?:e\s+)?(?:(?:diz|dizendo|fala|falando|falar|dizer|avisa|avisando)\s+)?(?:que\s+)?", "", rest, flags=re.I).strip()
         p = _person(who)
         if not msg:
+            _waiting_msg.update(who=who, t=time.time())  # a próxima fala dele é a mensagem
             return f"O que eu digo para {who}?", ""
         q = urllib.parse.quote(msg)
         if p:
@@ -566,6 +570,9 @@ async def siri(request: web.Request) -> web.Response:
             out["abrir"] = _later["url"]
         _later["text"] = ""
         return web.json_response(out)
+    if _waiting_msg["who"] and time.time() - _waiting_msg["t"] < 120:
+        who, _waiting_msg["who"] = _waiting_msg["who"], ""
+        text = f"manda uma mensagem pra {who} {text}"  # resposta ao "O que eu digo para X?"
     hit = await asyncio.to_thread(quick, text)
     if hit:  # comando direto: responde na hora
         log.info("Atalho da Siri (rápido): %s -> %s", text[:80], hit[1][:60])
