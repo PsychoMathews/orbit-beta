@@ -19,12 +19,25 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; color: var(--fg); overscroll-behavior: none;
   font: 15px/1.4 -apple-system, "SF Pro Text", "Segoe UI Variable Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-/* O vidro precisa de algo atrás para desfocar: luzes suaves fixas no fundo. */
-body { display: flex; flex-direction: column; background:
-  radial-gradient(60% 40% at 15% 8%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%),
-  radial-gradient(55% 35% at 95% 45%, color-mix(in srgb, var(--accent2) 16%, transparent), transparent 70%),
-  radial-gradient(70% 45% at 30% 100%, color-mix(in srgb, var(--accent3) 12%, transparent), transparent 70%),
-  linear-gradient(180deg, #0b1018, var(--bg)); background-attachment: fixed; }
+/* Fundo escuro em tudo (inclusive atrás da barra de abas e do indicador de início do iPhone). */
+html { background: linear-gradient(180deg, #0b0f16, var(--bg)) var(--bg); min-height: 100%; }
+body { display: flex; flex-direction: column; height: 100dvh; background: transparent; } /* fundo no html: a aura (z-index -1) fica por cima dele */
+/* Aura: a luz nasce do orbe, lá no topo, e dá ao vidro algo para desfocar. Parada, quase some e se move devagar;
+   ouvindo/falando, cresce com o volume da voz (--lv, de 0 a 1, vem do app.js) e as cores giram. */
+#aura { position: fixed; left: 50%; top: -18vh; width: 150vw; height: 95vh; transform: translateX(-50%); z-index: -1; pointer-events: none;
+  filter: blur(70px) saturate(130%); opacity: calc(.32 + var(--lv, 0) * .6); transition: opacity .5s ease; }
+#aura i { position: absolute; border-radius: 50%; mix-blend-mode: screen; animation: drift 22s ease-in-out infinite alternate; }
+#aura i:nth-child(1) { width: 60%; height: 55%; left: 20%; top: 10%; background: var(--accent); }
+#aura i:nth-child(2) { width: 45%; height: 45%; left: 45%; top: 22%; background: var(--accent2); animation-duration: 28s; animation-delay: -9s; opacity: .7; }
+#aura i:nth-child(3) { width: 40%; height: 40%; left: 12%; top: 30%; background: var(--accent3); animation-duration: 34s; animation-delay: -17s; opacity: .5; }
+@keyframes drift { 0% { transform: translate(-6%, -4%) scale(1); } 50% { transform: translate(5%, 4%) scale(1.08); } 100% { transform: translate(-3%, 6%) scale(.94); } }
+#aura .spin { position: absolute; inset: 0; animation: none; }
+body[data-st="listening"] #aura .spin, body[data-st="speaking"] #aura .spin { animation: auraspin 9s linear infinite; }
+body[data-st="thinking"] #aura { animation: breathe 2.4s ease-in-out infinite; }
+body[data-st="listening"] #aura i, body[data-st="speaking"] #aura i { animation-duration: 6s; }
+@keyframes auraspin { to { transform: rotate(360deg); } }
+@keyframes breathe { 50% { opacity: .62; } }
+@media (prefers-reduced-motion: reduce) { #aura i, #aura .spin, #aura { animation: none !important; } }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 .ico { display: block; flex: none; }
 [hidden] { display: none !important; }

@@ -167,6 +167,8 @@ const island = {
     $('#pill').className = st === 'idle' ? '' : 'open ' + st;
     $('#pill-text').textContent = st === 'idle' ? nome() : text || lab[st] || '';
     $('#orb').className = 'ring ' + st;
+    document.body.dataset.st = st; // a aura do fundo muda junto
+    if (st === 'idle') document.documentElement.style.setProperty('--lv', 0);
     if (st !== 'idle') this.loop();
   },
   listen(stream) {
@@ -192,6 +194,10 @@ const island = {
       const cs = getComputedStyle(document.documentElement), grad = g.createLinearGradient(0, 0, W, 0);
       grad.addColorStop(0, cs.getPropertyValue('--accent').trim()); grad.addColorStop(1, cs.getPropertyValue('--accent2').trim());
       g.fillStyle = grad;
+      // Nível da voz para a aura do fundo (suavizado para a luz não piscar).
+      const avg = real ? data.slice(2, 2 + N).reduce((a, b) => a + b, 0) / N / 255 : 0.15;
+      this.lv = (this.lv || 0) * 0.85 + avg * 0.15;
+      document.documentElement.style.setProperty('--lv', Math.min(1, this.lv * 1.6).toFixed(3));
       for (let i = 0; i < N; i++) {
         const v = real ? data[2 + i] / 255 : 0.3 + 0.22 * Math.sin(t / 240 + i * 0.7) * Math.sin(t / 900 + i);
         const h = Math.max(3, Math.min(H, v * H * 1.2)), x = (i + 0.5) * (W / N) - 1.25;
