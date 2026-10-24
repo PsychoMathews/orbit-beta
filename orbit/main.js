@@ -175,14 +175,12 @@ function openSettings(page) {
 // Ícone desenhado em código: um anel com um ponto, sem arquivo de imagem.
 function trayImage(size = 32) {
   const buf = Buffer.alloc(size * size * 4);
-  const c = (size - 1) / 2, rOut = size * 0.46, rIn = size * 0.34, rDot = size * 0.14;
+  const c = (size - 1) / 2, rOut = size * 0.44, rIn = size * 0.29; // anel vazado, como o orbe da pílula
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const d = Math.hypot(x - c, y - c);
-    const ring = Math.max(0, Math.min(1, rOut - d + 0.5)) * Math.max(0, Math.min(1, d - rIn + 0.5));
-    const dot = Math.max(0, Math.min(1, rDot - d + 0.5));
-    const a = Math.max(ring, dot);
+    const a = Math.max(0, Math.min(1, rOut - d + 0.5)) * Math.max(0, Math.min(1, d - rIn + 0.5));
     const i = (y * size + x) * 4;
-    buf[i] = 255; buf[i + 1] = dot > ring ? 209 : 255; buf[i + 2] = dot > ring ? 79 : 255; buf[i + 3] = Math.round(a * 255);
+    buf[i] = 255; buf[i + 1] = 255; buf[i + 2] = 255; buf[i + 3] = Math.round(a * 255);
   }
   return nativeImage.createFromBitmap(buf, { width: size, height: size });
 }

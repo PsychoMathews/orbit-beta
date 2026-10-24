@@ -10,6 +10,7 @@
   "scripts": {
     "start": "electron .",
     "beta": "set ORBIT_BETA=1&& electron .",
+    "icon": "electron build-assets/make-icon.js",
     "dist": "node ../tools/preparar_beta.js && electron-builder --win nsis && node ../tools/preparar_beta.js --verificar"
   },
   "devDependencies": {
