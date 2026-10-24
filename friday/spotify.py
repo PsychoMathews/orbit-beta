@@ -152,7 +152,7 @@ def queue() -> dict:
 def add_to_queue(query: str) -> str:
     """Procura a música e põe na fila do Spotify."""
     try:
-        r = _api("GET", "/search", {"q": query, "type": "track", "limit": 1, "market": "from_token"})
+        r = _api("GET", "/search", {"q": query, "type": "track", "limit": 1, "market": "BR"})
         items = r.get("tracks", {}).get("items", [])
         if not items:
             return f"Não achei '{query}' no Spotify."
@@ -262,7 +262,7 @@ def play(query: str, where: str = "celular", kind: str = "") -> tuple[str, str]:
             artists, tracks, lists = [], [], [mine]
         else:
             stype = "playlist" if kind == "playlist" or "playlist" in q.lower() else "artist,track"
-            r = _api("GET", "/search", {"q": q.replace("playlist", "").strip() or q, "type": stype, "limit": 3, "market": "from_token"})
+            r = _api("GET", "/search", {"q": q.replace("playlist", "").strip() or q, "type": stype, "limit": 3, "market": "BR"})
             artists = [a for a in (r.get("artists") or {}).get("items", []) if a]
             tracks = [t for t in (r.get("tracks") or {}).get("items", []) if t]
             lists = [p for p in (r.get("playlists") or {}).get("items", []) if p]
@@ -292,8 +292,11 @@ def play(query: str, where: str = "celular", kind: str = "") -> tuple[str, str]:
 
     dev = pick(_devices())
     if dev:
-        start(dev)
-        return f"Tocando {label}.", uri
+        try:
+            start(dev)
+            return f"Tocando {label}.", uri
+        except urllib.error.HTTPError as e:  # o app do celular em segundo plano aparece na lista mas recusa: abre e tenta de novo
+            log.info("Spotify: %s recusou (%s); abrindo o app e tentando de novo", dev.get("name"), e.code)
 
     def later() -> None:  # o Atalho abriu o Spotify: assim que o celular aparecer na conta, começa a tocar
         for _ in range(20):
@@ -317,7 +320,9 @@ def spotify_play(pedido: str, onde: str = "celular") -> str:
     except RuntimeError as e:
         return str(e)
     except urllib.error.HTTPError as e:
-        return "O Spotify recusou: precisa de conta Premium para tocar por comando." if e.code == 403 else f"O Spotify recusou ({e.code})."
+        body = e.read().decode(errors="ignore")
+        log.warning("Spotify recusou (%s): %s", e.code, body[:200])
+        return "O Spotify disse que precisa de conta Premium para tocar por comando." if "premium" in body.lower() else f"O Spotify recusou ({e.code})."
     if uri and msg.startswith("Abrindo"):
         mobile.action(uri)  # o Atalho da Siri abre o app do Spotify no celular
     return msg

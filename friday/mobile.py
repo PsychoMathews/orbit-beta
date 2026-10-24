@@ -227,8 +227,15 @@ def quick(text: str) -> tuple[str, str] | None:
     except RuntimeError as e:  # Spotify não conectado
         return str(e), "spotify://"
     except Exception as e:
-        code = getattr(e, "code", 0)
-        return ("O Spotify precisa de conta Premium para tocar por comando." if code == 403 else "O Spotify não respondeu agora."), "spotify://"
+        # Só fala em Premium quando o Spotify diz isso; qualquer outra recusa vai para o log com o motivo.
+        try:
+            body = e.read().decode(errors="ignore") if hasattr(e, "read") else str(e)
+        except Exception:
+            body = str(e)
+        log.warning("Atalho da Siri: Spotify recusou (%s): %s", getattr(e, "code", "?"), body[:200])
+        if "premium" in body.lower():
+            return "O Spotify disse que precisa de conta Premium para tocar por comando.", "spotify://"
+        return "O Spotify recusou o comando agora. Abri o app para você.", "spotify://"
     # abrir app
     m = re.match(r"^(?:abre|abrir|abra|abri)\s+(?:o\s+|a\s+)?(?P<app>[\wÀ-ÿ ]+?)$", t, re.I)
     if m:
