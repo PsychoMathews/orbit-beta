@@ -521,6 +521,11 @@ async def _answer(text: str, want_voice: bool, brain, config, voice) -> dict:
 _later = {"text": "", "url": "", "t": 0.0}  # resposta que ficou pronta depois que a Siri desistiu de esperar
 
 
+def _asks(reply: str) -> dict:
+    """Terminou em pergunta ("O que eu digo para a Vitória?"): o Atalho se chama de novo para ele responder."""
+    return {"continuar": "sim"} if (reply or "").rstrip().endswith("?") else {}
+
+
 def _clean_reply(reply: str) -> str:
     """Sem rodapé de fontes nem links da pesquisa na fala ("Sources: [BaresSP](...)")."""
     reply = re.split(r"\n?\s*(?:Sources|Fontes)\s*:", reply or "", maxsplit=1, flags=re.I)[0]
@@ -567,7 +572,7 @@ async def siri(request: web.Request) -> web.Response:
         # No histórico também, para ela saber depois o que abriu ("você me mandou pro endereço errado").
         from . import brain, config
         brain.record(config.OWNER_ID, text, hit[0] + (f" (abri no celular: {hit[1]})" if hit[1] else ""))
-        out = {"fala": hit[0]}
+        out = {"fala": hit[0], **_asks(hit[0])}
         if hit[1]:
             out["abrir"] = hit[1]
         if b.get("voz"):
@@ -596,7 +601,7 @@ async def siri(request: web.Request) -> web.Response:
         reply = "Tive um problema pra responder agora. Tenta de novo daqui a pouco."
     url, _action["url"] = _action["url"], ""
     reply = _clean_reply(reply)
-    out = {"fala": speech.for_speech(reply or "Feito.")}
+    out = {"fala": speech.for_speech(reply or "Feito."), **_asks(reply)}
     if b.get("voz"):  # só se o Atalho pedir ("voz": true): gerar o áudio leva 1 a 3 s
         audio = await _siri_voice(reply or "Feito.", request.headers.get("X-Forwarded-Host") or request.host)
         if audio:
