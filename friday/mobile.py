@@ -359,7 +359,7 @@ async def siri(request: web.Request) -> web.Response:
         b = {}
     text = str(b.get("texto") or b.get("text") or "").strip()[:1000]
     if not text:
-        return web.json_response({"fala": "Não ouvi nada. Pode repetir?", "abrir": ""})
+        return web.json_response({"fala": "Não ouvi nada. Pode repetir?"})
     _action["url"] = ""
     # Contexto vai no fim (texto começando com "[" o cérebro manda para o modelo local, que não serve aqui).
     ask = f"{text}\n\n(Pedido por voz pelo atalho da Siri no celular; ele pode estar dirigindo. Responda curto, para ser falado.)"
@@ -371,12 +371,15 @@ async def siri(request: web.Request) -> web.Response:
         log.exception("Atalho da Siri: erro ao responder")
         reply = "Tive um problema pra responder agora. Tenta de novo daqui a pouco."
     url, _action["url"] = _action["url"], ""
-    return web.json_response({"fala": speech.for_speech(reply or "Feito."), "abrir": url})
+    out = {"fala": speech.for_speech(reply or "Feito.")}
+    if url:  # sem link, sem o campo: o Atalho entende "abrir" vazio como valor e tenta abrir um endereço em branco
+        out["abrir"] = url
+    return web.json_response(out)
 
 
 async def siri_get(request: web.Request) -> web.Response:
     """Atalho montado com o método errado: responde em dados (a Siri fala o problema) em vez da página do app."""
-    return web.json_response({"fala": "O atalho está usando o método GET. Na ação Get Contents of URL, troque o Method para POST.", "abrir": ""})
+    return web.json_response({"fala": "O atalho está usando o método GET. Na ação Get Contents of URL, troque o Method para POST."})
 
 
 async def siri_info(request: web.Request) -> web.Response:
@@ -684,7 +687,7 @@ async def feed_get(request: web.Request) -> web.Response:
 async def static(request: web.Request) -> web.StreamResponse:
     rel = request.match_info.get("path") or "index.html"
     if rel.startswith("api/"):  # rota da API que não existe: dados, não a página do app (o Atalho não lê página)
-        return web.json_response({"fala": "Esse endereço não existe na Friday. Confira se o endereço do atalho termina em barra api barra siri.", "abrir": ""}, status=404)
+        return web.json_response({"fala": "Esse endereço não existe na Friday. Confira se o endereço do atalho termina em barra api barra siri."}, status=404)
     if rel in ("icon-180.png", "icon-192.png", "icon-512.png"):
         png = await asyncio.to_thread(icon_png, int(rel[5:8]))
         return web.Response(body=png, content_type="image/png", headers={"Cache-Control": "no-cache"})
