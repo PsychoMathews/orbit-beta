@@ -778,27 +778,14 @@ const orbBg = {
     const dt = Math.min(0.1, (now - (this.last || now)) / 1000); this.last = now;
     const lv = active ? +(getComputedStyle(document.documentElement).getPropertyValue('--lv') || 0) : 0;
     this.t += dt * (active ? 1.6 + lv * 3 : 0.9); // parado também ondula, só mais calmo
-    const cv = $('#orb-bg'), S = 256;
+    // Nítido (o mesmo desenho da ilha do PC, em shared/orb.js), na resolução da tela.
+    const cv = $('#orb-bg'), S = Math.min(900, Math.round(cv.clientWidth * (devicePixelRatio || 1))) || 512;
     if (cv.width !== S) { cv.width = cv.height = S; }
-    const g = cv.getContext('2d'), c = S / 2, R = S * 0.29, cs = getComputedStyle(document.documentElement);
+    const g = cv.getContext('2d'), cs = getComputedStyle(document.documentElement);
     g.clearRect(0, 0, S, S);
-    const cg = g.createConicGradient(this.t * 0.4, c, c);
-    ['--accent', '--accent2', '--accent3', '--accent'].forEach((v, i) => cg.addColorStop(i / 3, cs.getPropertyValue(v).trim()));
-    g.globalCompositeOperation = 'lighter'; g.strokeStyle = cg;
-    // Instável, mas contido: a voz agita os fios até um teto, para o anel nunca passar da borda da tela.
-    const energy = Math.min(1.9, 0.75 + lv * 1.6 + (island.st === 'thinking' ? 0.4 : 0)) * (1 + 0.12 * Math.sin(this.t * 2.3) * Math.sin(this.t * 0.7));
-    for (let k = 0; k < 9; k++) {
-      const ph = k * 0.7, sp = 0.5 + k * 0.13; g.beginPath();
-      for (let i = 0; i <= 96; i++) {
-        const a = i / 96 * Math.PI * 2;
-        const off = (Math.sin(a * 2 + this.t * sp + ph) * 1.6 + Math.sin(a * 3 - this.t * sp * 0.8 + ph * 2) * 1.1 + Math.sin(a * 5 + this.t * 1.3 + k)) * energy * S / 64;
-        const r = R + off * (k % 3 === 0 ? 0.4 : 1), x = c + Math.cos(a) * r, y = c + Math.sin(a) * r;
-        i ? g.lineTo(x, y) : g.moveTo(x, y);
-      }
-      g.globalAlpha = k === 0 ? 0.95 : 0.3; g.lineWidth = (k === 0 ? 7 : 3.5) * (1 + lv * 0.6); g.stroke();
-    }
-    g.globalAlpha = 0.25; g.lineWidth = 26; g.beginPath(); g.arc(c, c, R, 0, 7); g.stroke();
-    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    const energy = Math.min(2, 0.8 + lv * 1.4 + (island.st === 'thinking' ? 0.4 : 0)) * (1 + 0.15 * Math.sin(this.t * 2.3) * Math.sin(this.t * 0.7));
+    ORBIT_ORB.draw(g, { cx: S / 2, cy: S / 2, R: S * 0.3, t: this.t, energy, blur: 1,
+      colors: ['--accent', '--accent2', '--accent3'].map((v) => cs.getPropertyValue(v).trim()) });
   },
 };
 

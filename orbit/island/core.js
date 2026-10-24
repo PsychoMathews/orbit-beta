@@ -185,7 +185,7 @@ function orbColor(k) {
   return k < 0.5 ? mix(cs[0], cs[1], k * 2) : mix(cs[1], cs[2], (k - 0.5) * 2);
 }
 
-// Anel de energia: vários fios translúcidos ondulando em volta de um círculo.
+// Anel de energia: linha principal brilhante e fios ondulando (desenho em shared/orb.js).
 function drawOrb() {
   if (!Orbit.cfg) return;
   const st = orbCv.dataset.st || 'idle', dead = st === 'offline', mute = st === 'muted';
@@ -193,27 +193,10 @@ function drawOrb() {
   if (orbCv.width !== W * dpr) { orbCv.width = orbCv.height = W * dpr; }
   const g = orbCv.getContext('2d'); g.setTransform(dpr * W / 64, 0, 0, dpr * W / 64, 0, 0); g.clearRect(0, 0, 64, 64);
   const C = (k) => { const cc = orbColor(k); if (!mute && !dead) return cc; const m = (cc[0] + cc[1] + cc[2]) / 3; return [m * 0.9, m * 0.9, m]; };
-  const t = waveT, lv = waveLevel, c = 32, R = 19 * (1 + lv * 0.18), A = dead ? 0.35 : 1;
-  const cg = g.createConicGradient(t * 0.4, c, c);
-  [0, 0.33, 0.66, 1].forEach((s, i) => cg.addColorStop(s, `rgb(${C([0, 0.5, 1, 0][i])})`));
-  const hg = g.createRadialGradient(c, c, R * 0.7, c, c, R * 1.5);
-  hg.addColorStop(0, 'rgba(0,0,0,0)'); hg.addColorStop(0.35, `rgba(${C(0.4)},${0.28 * A})`); hg.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = hg; g.fillRect(0, 0, 64, 64);
-  g.globalCompositeOperation = 'lighter'; g.strokeStyle = cg;
-  const energy = 0.6 + lv * 1.4 + (st === 'thinking' ? 0.5 : 0);
-  for (let s = 0; s < 9; s++) {
-    const ph = s * 0.7, sp = 0.5 + s * 0.13; g.beginPath();
-    for (let i = 0; i <= 64; i++) {
-      const a = i / 64 * Math.PI * 2;
-      const off = (Math.sin(a * 2 + t * sp + ph) * 1.6 + Math.sin(a * 3 - t * sp * 0.8 + ph * 2) * 1.1 + Math.sin(a * 5 + t * 1.3 + s)) * energy;
-      const r = R + off * (s % 3 === 0 ? 0.4 : 1);
-      const x = c + Math.cos(a) * r, y = c + Math.sin(a) * r; i ? g.lineTo(x, y) : g.moveTo(x, y);
-    }
-    g.globalAlpha = (s === 0 ? 0.9 : 0.22) * A; g.lineWidth = s === 0 ? 1.6 : 1; g.stroke();
-  }
-  g.globalAlpha = 0.18 * A; g.lineWidth = 5; g.beginPath(); g.arc(c, c, R, 0, 7); g.stroke();
-  g.globalAlpha = 0.35 * A; g.lineWidth = 2.4; g.stroke();
-  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  // Mesmo orbe do app do celular (shared/orb.js): linha principal brilhante e fios que se soltam dela.
+  const t = waveT, lv = waveLevel, A = dead ? 0.35 : 1;
+  ORBIT_ORB.draw(g, { cx: 32, cy: 32, R: 19 * (1 + lv * 0.1), t, alpha: A, blur: dpr * W / 64,
+    energy: 0.8 + lv * 1.6 + (st === 'thinking' ? 0.5 : 0), colors: [0, 0.5, 1].map((k) => `rgb(${C(k)})`) });
   if (mute) { g.strokeStyle = '#ff5a5a'; g.lineWidth = 4; g.beginPath(); g.moveTo(18, 46); g.lineTo(46, 18); g.stroke(); }
 }
 
