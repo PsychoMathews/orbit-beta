@@ -12,6 +12,7 @@
     { id: 'davinci', name: 'DaVinci', icon: 'film', desc: 'Projeto aberto e fila de render do DaVinci Resolve.' },
     { id: 'ia', name: 'Uso de IA', icon: 'gauge', desc: 'Cota do Claude em tempo real, aviso quando uma tarefa longa termina, tokens, valor em API e projetos.' },
     { id: 'arquivos', name: 'Arquivos', icon: 'folder', desc: 'Downloads em andamento e recentes, e a Prateleira: arraste arquivos para a ilha e solte em outro lugar depois.' },
+    { id: 'prints', name: 'Prints', icon: 'camera', desc: 'Os prints que você tira aparecem aqui na hora. Arraste para o Claude, um chat ou uma pasta, ou copie a imagem.' },
     { id: 'clipboard', name: 'Área de transferência', icon: 'clip', desc: 'Histórico do que você copiou. Clique para copiar de novo.' },
     { id: 'notas', name: 'Notas', icon: 'note', desc: 'Bloco de notas rápido, salvo automaticamente.' },
     { id: 'avisos', name: 'Avisos', icon: 'inbox', desc: 'Histórico dos avisos e respostas %da%.' },

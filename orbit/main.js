@@ -608,6 +608,47 @@ let shelf = [];
 try { shelf = JSON.parse(fs.readFileSync(SHELF_FILE, 'utf8')); } catch {}
 function saveShelf() { fs.writeFile(SHELF_FILE, JSON.stringify(shelf), () => {}); toIsland({ type: 'shelf', shelf }); }
 
+// ---------- Prints: a pasta Capturas de Tela (Win+Shift+S e PrtScn salvam lá) ----------
+
+const SHOT_DIR = path.join(app.getPath('pictures'), 'Screenshots');
+const SHOT_EXT = /\.(png|jpe?g|webp|gif)$/i;
+const thumbCache = new Map(); // caminho -> { t, url }: miniatura só é refeita se o arquivo mudar
+let shots = [];
+function shotList() {
+  let names = [];
+  try { names = fs.readdirSync(SHOT_DIR).filter((n) => SHOT_EXT.test(n)); } catch { return []; }
+  const list = [];
+  for (const n of names) {
+    const p = path.join(SHOT_DIR, n);
+    try { const st = fs.statSync(p); list.push({ name: n, path: p, size: st.size, t: st.mtimeMs }); } catch {}
+  }
+  list.sort((a, b) => b.t - a.t);
+  return list.slice(0, 24).map((f) => {
+    let c = thumbCache.get(f.path);
+    if (!c || c.t !== f.t) {
+      const img = nativeImage.createFromPath(f.path);
+      c = { t: f.t, url: img.isEmpty() ? '' : img.resize({ width: 280, quality: 'good' }).toDataURL() };
+      thumbCache.set(f.path, c);
+    }
+    return { ...f, thumb: c.url };
+  });
+}
+function watchShots() {
+  let timer = null;
+  const scan = () => {
+    if (!config.modules.enabled.prints) return;
+    const prev = new Set(shots.map((s) => s.path));
+    shots = shotList();
+    const fresh = shots.find((s) => !prev.has(s.path) && Date.now() - s.t < 60e3);
+    toIsland({ type: 'shots', shots, fresh });
+  };
+  shots = shotList();
+  try {
+    // O Recorte grava o arquivo em partes: espera a escrita assentar antes de ler.
+    fs.watch(SHOT_DIR, () => { clearTimeout(timer); timer = setTimeout(scan, 700); });
+  } catch { setInterval(scan, 3000); } // pasta ainda não existe: confere de tempos em tempos
+}
+
 // Ícone do arraste: o ícone do próprio arquivo no Windows.
 async function dragIcon(file) {
   try { return await app.getFileIcon(file, { size: 'normal' }); } catch { return trayImage(32); }
@@ -734,6 +775,9 @@ ipcMain.on('file-drag', (e, f) => {
   if (files.length) e.sender.startDrag({ file: files[0], files, icon: dragIconCache.get(path.extname(files[0]).toLowerCase()) || trayImage(32) });
   for (const x of files) { const k = path.extname(x).toLowerCase(); if (!dragIconCache.has(k)) dragIcon(x).then((i) => { if (!i.isEmpty()) dragIconCache.set(k, i); }); }
 });
+ipcMain.handle('shots', () => (shots.length ? shots : (shots = shotList())));
+ipcMain.on('shot-copy', (_e, f) => { if (f && fs.existsSync(f)) clipboard.writeImage(nativeImage.createFromPath(f)); });
+ipcMain.on('shot-folder', () => { fs.mkdirSync(SHOT_DIR, { recursive: true }); shell.openPath(SHOT_DIR); });
 ipcMain.on('copy', (_e, text) => { lastClip = text; clipboard.writeText(text); });
 ipcMain.on('clips-clear', () => { clips = []; fs.writeFile(CLIP_FILE, '[]', () => {}); toIsland({ type: 'clipboard', clips }); });
 ipcMain.handle('notes-get', () => { try { return fs.readFileSync(NOTES_FILE, 'utf8'); } catch { return ''; } });
@@ -779,6 +823,7 @@ function startAll() {
   connect();
   watchClipboard();
   watchDownloads();
+  watchShots();
   watchCursor();
   micShortcut();
   readLink(); setInterval(readLink, 60000);
