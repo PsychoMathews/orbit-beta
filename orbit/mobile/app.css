@@ -29,7 +29,7 @@ body { display: flex; flex-direction: column; height: 100dvh; background: transp
    A voz (--lv) deixa ele mais claro e mais instável, nunca maior (o tamanho fica travado dentro da tela). */
 #orb-bg { --size: min(96vw, 62vh); position: fixed; left: calc(50% - var(--size) / 2); top: calc(46% - var(--size) / 2);
   width: var(--size); height: var(--size); z-index: -1; pointer-events: none; /* centro por posição: girar não desloca */
-  filter: saturate(130%) brightness(calc(1 + var(--lv, 0) * .45));
+  filter: blur(4px) saturate(130%) brightness(calc(1 + var(--lv, 0) * .45)); /* desfoque leve: separa o fundo do que está na frente */
   opacity: calc(.62 + var(--lv, 0) * .38); transition: opacity .3s ease, filter .3s ease;
   animation: orb-turn 40s linear infinite, orb-breathe 5.5s ease-in-out infinite; }
 @keyframes orb-turn { to { rotate: 360deg; } }
