@@ -50,7 +50,12 @@ BANCO = {
     "pomodoro_fim": [
         "Pomodoro concluído, chefe. Hora da pausa.",
         "Bloco de foco encerrado. Levante, estique as pernas.",
-        "Fim do pomodoro. Cinco minutos de descanso, chefe.",
+        "Fim do pomodoro. Hora de descansar um pouco, chefe.",
+    ],
+    "pausa_fim": [
+        "Pausa encerrada, chefe. Pronto para mais um pomodoro?",
+        "Fim do descanso. Bora para o próximo bloco de foco?",
+        "A pausa acabou. Quando quiser, começo outro pomodoro.",
     ],
     # ---------- Alarme ----------
     "alarme_ok": [

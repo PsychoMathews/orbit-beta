@@ -64,7 +64,7 @@ canvas.wave { width: 190px; height: 42px; flex: none; }
 /* ---------- Painel expandido ---------- */
 #panel { padding: 10px 12px 12px; display: flex; flex-direction: column; height: 100%; }
 #tabs { display: flex; align-items: center; gap: 2px; padding: 0 2px 8px; }
-.tab { height: 30px; min-width: 30px; padding: 0 8px; border-radius: 15px; display: flex; align-items: center; gap: 6px; color: var(--dim); transition: background .2s, color .2s; }
+.tab { flex: none; height: 30px; min-width: 30px; padding: 0 8px; border-radius: 15px; display: flex; align-items: center; gap: 6px; color: var(--dim); transition: background .2s, color .2s; }
 .tab:hover { background: var(--card2); color: var(--fg); }
 .tab.on { background: var(--card2); color: var(--fg); }
 .tab .lbl { display: none; font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -262,3 +262,7 @@ html.cpanel .tab.on .lbl { display: none; }
 .shot:hover .shot-bar { opacity: 1; }
 .shot-bar .btn.round { width: 24px; height: 24px; }
 #b-actions .shot-mini { height: 44px; max-width: 90px; object-fit: cover; border-radius: 8px; cursor: grab; box-shadow: 0 0 0 1px var(--line); }
+
+/* Notas: abas de notas com rolagem lateral, sem encolher */
+#nn-tabs .tab { flex: none; }
+#nn-tabs::-webkit-scrollbar { display: none; }

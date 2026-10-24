@@ -78,13 +78,19 @@ const $right = document.getElementById('c-right');
 
 let bannerTimer = null, bannerUntil = 0, hovering = false;
 
+// Largura que as abas pedem (a aba aberta mostra o nome): o painel cresce para nenhuma ficar espremida.
+function tabsWidth() {
+  const tabs = [...$tabs.children].filter((x) => !x.classList.contains('spacer'));
+  return tabs.reduce((sum, t) => sum + t.offsetWidth, 0) + 2 * tabs.length + 4 + 24 + 24;
+}
+
 function layout() {
   const c = Orbit.cfg.island;
   $island.style.top = c.offsetY + 'px';
   $island.classList.toggle('muted', Orbit.friday.muted);
   $island.className = $island.className.replace(/\b(compact|banner|expanded)\b/g, '').trim() + ' ' + Orbit.mode;
   let w, h, r;
-  if (Orbit.mode === 'expanded') { w = c.panelWidth; h = c.compactPanel ? 330 : 390; r = 30; }
+  if (Orbit.mode === 'expanded') { w = Math.min(window.innerWidth - 16, Math.max(c.panelWidth, tabsWidth())); h = c.compactPanel ? 330 : 390; r = 30; }
   else if (Orbit.mode === 'banner') {
     w = 480; r = 26;
     $banner.style.width = w + 'px';
@@ -288,6 +294,7 @@ function showTab(id) {
   }
   const m = mounted[id];
   if (!m.visible) { m.visible = true; m.view.classList.add('on'); Orbit.modules[id].show?.(); }
+  layout(); // o nome da aba aberta muda a largura que as abas precisam
 }
 
 function hideViews() {

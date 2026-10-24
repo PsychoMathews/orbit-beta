@@ -15,7 +15,7 @@ if (beta.ON) app.setPath('userData', path.join(app.getPath('appData'), 'Orbit Be
 else app.setPath('userData', path.join(app.getPath('appData'), 'orbit'));
 const PORT = Number(process.env.ORBIT_PORT || (beta.ON ? beta.PORT : 8788));
 // A janela é maior que a ilha; o que sobra é transparente e deixa o clique passar.
-const WIN_W = 900, WIN_H = 480;
+const WIN_W = 1240, WIN_H = 480; // largura máxima do painel aberto (ele cresce com o número de abas)
 
 if (!app.requestSingleInstanceLock()) { app.quit(); return; }
 // Depuração: ORBIT_DEBUG=1 abre a ilha para inspeção em 127.0.0.1:9229 (DevTools).

@@ -387,7 +387,7 @@ async def resolve_info(request: web.Request) -> web.Response:
 
 async def timers_get(request):
     from . import hub
-    return web.json_response({"timers": hub.timers()})
+    return web.json_response({"timers": hub.timers(), "pomodoro": hub.pomodoro_status()})
 
 
 async def claude_get(request):
@@ -410,7 +410,7 @@ async def timers_post(request):
         msg = "ok"
     else:
         return web.json_response({"ok": False}, status=400)
-    return web.json_response({"ok": True, "msg": msg, "timers": hub.timers()})
+    return web.json_response({"ok": True, "msg": msg, "timers": hub.timers(), "pomodoro": hub.pomodoro_status()})
 
 
 async def lists_get(request):
@@ -432,13 +432,29 @@ async def lists_post(request):
 
 async def notes_get(request):
     from . import hub
-    return web.json_response({"text": hub.notes_get()})
+    return web.json_response({"notes": await asyncio.to_thread(hub.notes_list)})
 
 
 async def notes_post(request):
+    """{"id"?, "title", "text"}: cria (sem id) ou salva uma nota. Devolve a nota (com o id novo)."""
     from . import hub
-    body = await request.json()
-    hub.notes_set(str(body.get("text", ""))[:100000])
+    b = await request.json()
+    note = await asyncio.to_thread(hub.note_save, str(b.get("id") or ""), str(b.get("title", "")), str(b.get("text", "")),
+                                   str(b.get("source") or "ilha"))
+    return web.json_response({"ok": True, "note": note})
+
+
+async def notes_archive(request):
+    from . import hub
+    b = await request.json()
+    await asyncio.to_thread(hub.note_archive, str(b.get("id", "")), bool(b.get("archived", True)), str(b.get("source") or "ilha"))
+    return web.json_response({"ok": True})
+
+
+async def notes_delete(request):
+    from . import hub
+    b = await request.json()
+    await asyncio.to_thread(hub.note_delete, str(b.get("id", "")), str(b.get("source") or "ilha"))
     return web.json_response({"ok": True})
 
 
@@ -727,6 +743,8 @@ async def start(send_to_telegram=None) -> None:
     app.router.add_post("/orbit/lists/{action}", lists_post)
     app.router.add_get("/orbit/notes", notes_get)
     app.router.add_post("/orbit/notes", notes_post)
+    app.router.add_post("/orbit/notes/delete", notes_delete)
+    app.router.add_post("/orbit/notes/archive", notes_archive)
     app.router.add_get("/orbit/claude", claude_get)
     app.router.add_get("/orbit/windows", windows_get)
     app.router.add_post("/orbit/windows/{action}", windows_post)

@@ -24,7 +24,10 @@ log = logging.getLogger("friday.hub")
 
 TIMERS = MEMORIA / "timers.json"
 LISTS = MEMORIA / "listas.json"
-NOTES = MEMORIA / "notas.txt"
+NOTES = MEMORIA / "notas.txt"  # formato antigo (um bloco só), migrado para notas.json
+NOTES_JSON = MEMORIA / "notas.json"
+POMODORO = MEMORIA / "pomodoro.json"  # quantos pomodoros no dia (a cada 4, a pausa é longa)
+POMO_FOCUS, POMO_BREAK, POMO_LONG, POMO_EVERY = 25, 5, 15, 4
 QUOTA_STATE = MEMORIA / ".cota-claude.json"
 CLAUDE_DIR = Path.home() / ".claude" / "projects"
 
@@ -128,7 +131,13 @@ def _timer_message(t: dict) -> tuple[str, str]:
         hora = label[7:]
         return f"⏰ Alarme das {hora}.", R.fala("alarme_fim", hora=hora)
     if label.lower() == "pomodoro":
-        return "🍅 Pomodoro terminou: hora da pausa.", R.fala("pomodoro_fim")
+        n = pomodoro_status()["done"]
+        longa = n % POMO_EVERY == 0
+        pausa = POMO_LONG if longa else POMO_BREAK
+        return (f"🍅 Pomodoro {n} concluído: pausa de {pausa} min.",
+                R.fala("pomodoro_fim") + (f" Dessa vez, pausa longa de {POMO_LONG} minutos." if longa else ""))
+    if label.lower() == "pausa":
+        return "🍅 A pausa acabou: pronto para o próximo pomodoro?", R.fala("pausa_fim")
     oque = R.assunto(label)
     if not oque:
         return f"⏱️ Seu timer de {dur} acabou.", R.fala("timer_fim", dur=dur)
@@ -147,10 +156,27 @@ async def _timer_loop(notify) -> None:
             if due:
                 _save_timers([t for t in items if t not in due])
                 for t in due:
+                    if t["label"].lower() == "pomodoro":
+                        _pomodoro_done()  # conta e já começa a pausa (técnica Pomodoro)
                     await notify(*_timer_message(t), kind="timer")
         except Exception:
             log.exception("Erro nos timers")
         await asyncio.sleep(1)
+
+
+# ---------- Pomodoro: 25 de foco, 5 de pausa, e a cada 4 uma pausa de 15 ----------
+
+def pomodoro_status() -> dict:
+    s = _load(POMODORO, {})
+    today = datetime.now(TZ).strftime("%Y-%m-%d")
+    return {"done": s.get("done", 0) if s.get("day") == today else 0, "focus": POMO_FOCUS, "break": POMO_BREAK,
+            "long": POMO_LONG, "every": POMO_EVERY}
+
+
+def _pomodoro_done() -> None:
+    n = pomodoro_status()["done"] + 1
+    _save(POMODORO, {"day": datetime.now(TZ).strftime("%Y-%m-%d"), "done": n})
+    timer_start(POMO_LONG if n % POMO_EVERY == 0 else POMO_BREAK, "Pausa")
 
 
 # ---------- Listas ----------
@@ -227,30 +253,114 @@ def list_clear(list_name: str) -> str:
     return f"Lista '{key}' apagada."
 
 
-# ---------- Notas da ilha ----------
+# ---------- Notas (cada assunto numa nota: título + texto) ----------
+# Antes era um bloco só (notas.txt); na primeira leitura ele é dividido em notas, uma por assunto.
+
+_HEADER = re.compile(r"^(?:[^\w\s]{1,3}\s*)?([^:\n]{3,60}):\s*(.*)$")
+
+
+def _split_legacy(text: str) -> list[dict]:
+    """Bloco antigo -> notas. Começa nota nova em linha com emoji, "Título: texto" ou link solto."""
+    notes, now = [], time.time()
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        m = _HEADER.match(line.strip())
+        bare_link = re.match(r"^https?://([^/\s]+)", line.strip())
+        if bare_link:
+            host = bare_link.group(1).removeprefix("www.").split(".")[0].capitalize()
+            notes.append({"title": f"Link do {host}", "text": line.strip()})
+        elif m and not re.match(r"^https?$", m.group(1).strip(), re.I):
+            notes.append({"title": m.group(1).strip(), "text": m.group(2).strip()})
+        elif re.match(r"^[^\w\s]", line.strip()) or not notes:
+            first = re.sub(r"^[^\w]+", "", line.strip())
+            notes.append({"title": first[:60] or "Nota", "text": ""})
+        else:
+            notes[-1]["text"] = (notes[-1]["text"] + "\n" + line.strip()).strip()
+    return [{"id": uuid.uuid4().hex[:8], **n, "t": now - i} for i, n in enumerate(notes)]
+
+
+def notes_list() -> list[dict]:
+    """Mais recente primeiro."""
+    if not NOTES_JSON.exists() and NOTES.exists():
+        _save_notes(_split_legacy(NOTES.read_text(encoding="utf-8")), publish=False)
+        NOTES.rename(NOTES.with_suffix(".txt.antigo"))
+        log.info("Notas: bloco antigo dividido em notas separadas")
+    return sorted(_load(NOTES_JSON, []), key=lambda n: -n["t"])
+
+
+def _save_notes(notes: list[dict], source: str = "ilha", publish: bool = True) -> None:
+    _save(NOTES_JSON, notes)
+    if publish:
+        _publish("notes", notes=sorted(notes, key=lambda n: -n["t"]), source=source)
+
+
+def note_save(note_id: str, title: str, text: str, source: str = "ilha") -> dict:
+    """Cria (sem id) ou atualiza uma nota."""
+    notes = notes_list()
+    title, text = title.strip()[:120], text[:100000]
+    for n in notes:
+        if n["id"] == note_id:
+            n.update(title=title, text=text, t=time.time())
+            break
+    else:
+        n = {"id": uuid.uuid4().hex[:8], "title": title, "text": text, "t": time.time()}
+        notes.append(n)
+    _save_notes(notes, source)
+    return n
+
+
+def note_archive(note_id: str, archived: bool = True, source: str = "ilha") -> None:
+    """Arquivada some da ilha e do "lê minhas notas", mas continua guardada (dá para desarquivar)."""
+    notes = notes_list()
+    for n in notes:
+        if n["id"] == note_id:
+            n["archived"] = bool(archived)
+    _save_notes(notes, source)
+
+
+def note_delete(note_id: str, source: str = "ilha") -> None:
+    _save_notes([n for n in notes_list() if n["id"] != note_id], source)
+
+
+def _find_note(title: str) -> dict | None:
+    q = title.strip().lower()
+    notes = notes_list()
+    return (next((n for n in notes if n["title"].lower() == q), None)
+            or next((n for n in notes if q in n["title"].lower()), None))
+
 
 def notes_get() -> str:
-    try:
-        return NOTES.read_text(encoding="utf-8")
-    except Exception:
-        return ""
+    """Todas as notas num texto só (para o resumo do dia e o que precisa ler tudo)."""
+    return "\n\n".join(f"# {n['title']}\n{n['text']}".strip() for n in notes_list())
 
 
-def notes_set(text: str, source: str = "ilha") -> None:
-    NOTES.parent.mkdir(exist_ok=True)
-    NOTES.write_text(text, encoding="utf-8")
-    _publish("notes", text=text, source=source)
+def note_read(title: str = "") -> str:
+    if title:
+        n = _find_note(title)
+        return f"{n['title']}:\n{n['text']}"[:4000] if n else f"Não achei nota com '{title}'. Notas: " + ", ".join(x["title"] for x in notes_list())
+    notes = [n for n in notes_list() if not n.get("archived")]
+    if not notes:
+        return "O bloco de notas da ilha está vazio."
+    return "\n".join(f"- {n['title']}: {n['text'][:200].replace(chr(10), ' ')}" for n in notes)[:4000]
 
 
-def note_read() -> str:
-    text = notes_get().strip()
-    return text[:4000] if text else "O bloco de notas da ilha está vazio."
-
-
-def note_add(text: str) -> str:
-    current = notes_get().rstrip()
-    notes_set((current + "\n" if current else "") + text.strip(), source="ia")
-    return "Anotado no bloco de notas da ilha."
+def note_add(text: str, title: str = "") -> str:
+    """Nota nova; com título de uma nota que já existe, acrescenta nela."""
+    text = text.strip()
+    if not title:
+        m = _HEADER.match(text.splitlines()[0]) if text else None
+        if m:
+            title, text = m.group(1).strip(), (m.group(2) + "\n" + "\n".join(text.splitlines()[1:])).strip()
+        else:
+            first = re.sub(r"^[^\w]+", "", text.splitlines()[0] if text else "")
+            title, text = first[:60] or "Nota", "\n".join(text.splitlines()[1:]).strip() if len(first) <= 60 else text
+    old = _find_note(title) if title else None
+    if old and old["title"].lower() == title.lower():
+        note_save(old["id"], old["title"], (old["text"].rstrip() + "\n" + text).strip(), source="ia")
+        return f"Acrescentado na nota '{old['title']}'."
+    note_save("", title, text, source="ia")
+    return f"Nota '{title}' criada."
 
 
 # ---------- Cota do Claude ----------
@@ -536,8 +646,10 @@ SCHEMAS = [
     fn("list_show", "Mostra os itens de uma lista (vazio = todas as listas).", {"list_name": _LIST}),
     fn("list_remove", "Tira itens de uma lista (ex.: o que já foi comprado).", {"list_name": _LIST, "items": _ITEMS}, ["list_name", "items"]),
     fn("list_clear", "Apaga uma lista inteira.", {"list_name": _LIST}, ["list_name"]),
-    fn("note_read", "Lê o bloco de notas da ilha do PC (o que o usuário anotou lá).", {}),
-    fn("note_add", "Acrescenta um texto no bloco de notas da ilha do PC.", {"text": {"type": "string"}}, ["text"]),
+    fn("note_read", "Lê as notas da ilha do PC. Sem título: lista todas (título e começo). Com título: a nota inteira.",
+       {"title": {"type": "string", "description": "título (ou parte) da nota; vazio = todas"}}),
+    fn("note_add", "Cria uma nota na ilha do PC (cada assunto numa nota). Com o título de uma nota existente, acrescenta nela.",
+       {"text": {"type": "string"}, "title": {"type": "string", "description": "título curto do assunto"}}, ["text"]),
     fn("claude_quota", "Cota real do Claude (Claude Code): % usado na janela de 5 h e na semana, quando reinicia e há quanto tempo começou. remind=true cria um aviso para a hora do reset (use quando ele pedir 'me avisa quando voltar').", {
         "remind": {"type": "boolean"},
     }),

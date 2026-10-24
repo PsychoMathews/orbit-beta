@@ -60,7 +60,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .view.on { display: block; }
 .view.leaving { display: block; animation: sink .26s ease forwards; pointer-events: none; }
 /* Como os cartões da referência: sobem saindo de um desfoque e assentam; na saída, se desfazem. */
-.rise { animation: rise .7s var(--settle) both; animation-delay: calc(var(--i, 0) * 55ms); }
+.rise { animation: rise .7s var(--settle) backwards; animation-delay: calc(var(--i, 0) * 55ms); }
 @keyframes rise { from { opacity: 0; transform: translateY(28px) scale(.96); filter: blur(14px); }
   55% { filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes sink { to { opacity: 0; transform: translateY(-12px) scale(.98); filter: blur(12px); } }
@@ -89,7 +89,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .empty { color: var(--faint); text-align: center; padding: 48px 20px; }
 .chip { font-size: 10.5px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; padding: 5px 10px; border-radius: 12px;
   background: rgba(255, 255, 255, .06); color: var(--dim); box-shadow: inset 0 0 0 1px var(--edge); }
-.chip.on { background: var(--accent-soft); color: #cfe2ff; }
+.chip.on { background: var(--accent-soft); color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+/* Atalhos de horário: maiores, para o polegar */
+.chip.pick { font-size: 13px; letter-spacing: 0; text-transform: none; padding: 9px 14px; border-radius: 16px; cursor: pointer; }
 .btn { height: 44px; padding: 0 18px; border-radius: 22px; display: inline-flex; align-items: center; gap: 8px;
   justify-content: center; font-weight: 600; font-size: 14px; transition: transform .12s, background .2s; }
 .btn:active { transform: scale(.95); }
@@ -98,7 +100,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .btn.primary { background: #f3f5f8; color: #0b0f16; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .btn.tint { background: var(--accent-grad); color: #fff; box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent); }
 .btn.danger { color: var(--bad); }
-.btn:disabled { opacity: .4; }
+.btn:disabled { opacity: .45; box-shadow: none; filter: saturate(.4); }
 .input { flex: 1; min-width: 0; height: 48px; border-radius: 24px; border: 0; outline: none; padding: 0 20px;
   color: var(--fg); font: inherit; font-size: 16px; }
 .input::placeholder { color: var(--faint); }
@@ -149,3 +151,38 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px;
 #toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--bottom) + 90px); padding: 14px 18px; border-radius: 20px;
   font-size: 14px; z-index: 9; animation: fade .2s ease; }
 .back { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); font-weight: 600; font-size: 14px; margin: 2px 0 12px; }
+
+/* Uso de IA: identidade do Claude (laranja) no lugar da cor da assistente */
+.view[data-id="ia"] { --accent: #d97857; --accent2: #e8b48a; --accent-soft: rgba(217, 120, 87, .22); }
+
+/* ---------- Timer ---------- */
+.tomato { font-size: 34px; line-height: 1; filter: drop-shadow(0 4px 12px rgba(255, 80, 60, .35)); }
+.pdot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, .14); }
+.pdot.on { background: #ff5a4a; box-shadow: 0 0 8px rgba(255, 90, 74, .7); }
+/* Rodas de horas/minutos/segundos: rolagem que encaixa no número, com a faixa do meio destacada */
+.wheels { position: relative; display: flex; align-items: center; justify-content: center; gap: 4px; height: 176px; }
+.wheel { width: 64px; height: 176px; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none;
+  -webkit-mask: linear-gradient(transparent, #000 35%, #000 65%, transparent); mask: linear-gradient(transparent, #000 35%, #000 65%, transparent); }
+.wheel::-webkit-scrollbar { display: none; }
+.wheel-in { padding: 66px 0; }
+.wheel-in > div { height: 44px; line-height: 44px; text-align: center; font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; scroll-snap-align: center; }
+.wl { color: var(--dim); font-size: 13px; font-weight: 600; margin-right: 8px; }
+.wheel-band { position: absolute; left: 8px; right: 8px; top: 66px; height: 44px; border-radius: 12px; pointer-events: none;
+  background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px var(--edge); }
+
+/* Links com cara de botão ou de item seguem o app (sem o azul sublinhado do navegador) */
+a.btn, a.item { color: var(--fg); text-decoration: none; -webkit-tap-highlight-color: transparent; }
+
+/* ---------- Notas: deslizar para arquivar/excluir, links em pílula ---------- */
+.swipe { position: relative; border-radius: 22px; overflow: hidden; }
+.swipe-front { position: relative; z-index: 1; touch-action: pan-y; }
+.swipe-acts { position: absolute; inset: 0 0 0 auto; width: 170px; display: flex; gap: 6px; padding: 6px; opacity: 0; transition: opacity .15s; }
+.swipe.moving .swipe-acts, .swipe.open .swipe-acts { opacity: 1; } /* o vidro da nota é translúcido: os botões só aparecem ao deslizar */
+.swipe-acts button { flex: 1; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11.5px; font-weight: 600; color: #fff; }
+.sw-arch { background: color-mix(in srgb, var(--accent) 70%, #000); }
+.sw-del { background: #e5484d; }
+.note-text { white-space: pre-wrap; word-wrap: break-word; line-height: 1.6; color: #e6e9ee; user-select: text; }
+.link-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; margin: 2px 0; border-radius: 999px; vertical-align: middle;
+  color: var(--fg); text-decoration: none; font-size: 13.5px; font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 16%, rgba(255, 255, 255, .04)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
+.link-pill .ico { color: var(--accent); }

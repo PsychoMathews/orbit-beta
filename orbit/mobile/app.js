@@ -54,7 +54,10 @@ function go(id) {
 const RISE = '.card, .item, .tile, .sec, .msg';
 function rise(el, only) {
   const items = only ? [only] : [...el.querySelectorAll(RISE)].filter((x) => !x.parentElement.closest('.card, .item'));
-  items.forEach((x, i) => { x.classList.remove('rise'); void x.offsetWidth; x.style.setProperty('--i', Math.min(i, 12)); x.classList.add('rise'); });
+  items.forEach((x, i) => {
+    x.classList.remove('rise'); void x.offsetWidth; x.style.setProperty('--i', Math.min(i, 12)); x.classList.add('rise');
+    x.addEventListener('animationend', () => x.classList.remove('rise'), { once: true }); // solta o transform (ex.: deslizar a nota)
+  });
   el.querySelectorAll('[data-count]').forEach(countUp);
 }
 function countUp(n) {
@@ -231,20 +234,42 @@ view({
 // ---------- Lembretes ----------
 view({
   id: 'lembretes', title: 'Lembretes', icon: 'bell',
+  // Um cartão só: o que lembrar, quando (atalhos ou "Escolher", que abre o seletor do iPhone) e o botão.
   mount(el) {
-    el.innerHTML = `<div class="card" style="display:flex;flex-direction:column;gap:10px;margin-bottom:6px">
-        <input class="input" id="rm-text" placeholder="Lembrar de…">
-        <div class="row"><input class="input" id="rm-when" type="datetime-local"><button class="btn primary" id="rm-add">Criar</button></div>
-        <div class="row" style="flex-wrap:wrap">${[[15, '15 min'], [60, '1 h'], [180, '3 h']].map(([m, l]) => `<button class="chip" data-in="${m}">em ${l}</button>`).join('')}<button class="chip" data-tomorrow>amanhã 9h</button></div>
+    const p2 = (n) => String(n).padStart(2, '0');
+    const at = (h, m = 0, plusDays = 0) => { const d = new Date(); d.setDate(d.getDate() + plusDays); d.setHours(h, m, 0, 0); return d; };
+    const later = (min) => new Date(Date.now() + min * 6e4);
+    const tonight = at(19); const evening = Date.now() < tonight - 30 * 6e4;
+    const quick = [['Em 15 min', () => later(15)], ['Em 1 hora', () => later(60)],
+      evening ? ['Hoje 19h', () => at(19)] : ['Em 3 horas', () => later(180)], ['Amanhã 9h', () => at(9, 0, 1)]];
+    el.innerHTML = `<div class="card" style="display:flex;flex-direction:column;gap:14px">
+        <input class="input" id="rm-text" placeholder="Lembrar de…" enterkeyhint="done" style="width:100%;flex:none">
+        <div><div class="label" style="margin:0 4px 8px">Quando</div>
+          <div class="row" style="flex-wrap:wrap;gap:8px" id="rm-quick">
+            ${quick.map(([l], i) => `<button class="chip pick" data-q="${i}">${l}</button>`).join('')}
+            <label class="chip pick" id="rm-other" style="position:relative">Escolher…
+              <input type="datetime-local" id="rm-when" style="position:absolute;inset:0;opacity:0;width:100%;height:100%"></label>
+          </div></div>
+        <button class="btn tint" id="rm-add" style="width:100%" disabled>Escolha quando</button>
       </div><div data-body></div>`;
-    const setWhen = (d) => { const p = (n) => String(n).padStart(2, '0'); $('#rm-when').value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
-    el.querySelectorAll('[data-in]').forEach((b) => b.onclick = () => setWhen(new Date(Date.now() + b.dataset.in * 6e4)));
-    $('[data-tomorrow]', el).onclick = () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); setWhen(d); };
+    let when = null;
+    const label = (d) => `${dayLabel(d)} às ${hhmm(d)}`;
+    const pick = (d, btn) => {
+      when = d;
+      el.querySelectorAll('.pick').forEach((b) => b.classList.toggle('on', b === btn));
+      const ok = !!$('#rm-text').value.trim();
+      $('#rm-add').disabled = !ok; $('#rm-add').textContent = ok ? `Lembrar ${label(d).toLowerCase()}` : label(d);
+    };
+    el.querySelectorAll('[data-q]').forEach((b) => b.onclick = () => pick(quick[+b.dataset.q][1](), b));
+    $('#rm-when').onchange = (e) => { if (e.target.value) pick(new Date(e.target.value), $('#rm-other')); };
+    $('#rm-text').oninput = () => { if (when) pick(when, el.querySelector('.pick.on')); };
     $('#rm-add').onclick = async () => {
-      const text = $('#rm-text').value.trim(), when = $('#rm-when').value;
-      if (!text || !when) return toast('Escreva o lembrete e escolha quando.');
-      const r = await post('/reminders/add', { text, when }).catch(() => null);
-      toast(r?.msg || 'Não consegui criar.'); $('#rm-text').value = ''; this.show();
+      const text = $('#rm-text').value.trim(); if (!text || !when) return;
+      const iso = `${when.getFullYear()}-${p2(when.getMonth() + 1)}-${p2(when.getDate())}T${p2(when.getHours())}:${p2(when.getMinutes())}`;
+      const r = await post('/reminders/add', { text, when: iso }).catch(() => null);
+      toast(r?.msg || 'Não consegui criar.');
+      $('#rm-text').value = ''; when = null; el.querySelectorAll('.pick').forEach((b) => b.classList.remove('on'));
+      $('#rm-add').disabled = true; $('#rm-add').textContent = 'Escolha quando'; this.show();
     };
   },
   async show() {
@@ -276,92 +301,185 @@ view({
     if (!m.title) { body.innerHTML = '<div class="empty">Nada tocando no PC.</div>'; return; }
     const pct = m.duration ? Math.min(100, (m.position / m.duration) * 100) : 0;
     body.innerHTML = `<div class="card"><div class="row" style="margin-bottom:14px"><span class="label" style="flex:1">Tocando no PC</span>${m.playing ? '<span class="live">AO VIVO</span>' : '<span class="label">Pausado</span>'}</div>
-      ${m.art ? `<img class="art" src="${m.art}" alt="">` : ''}
+      ${m.yt ? `<img class="art" src="${m.yt.thumb}" onerror="this.onerror=null;this.src='${m.yt.thumb_hq}'" alt="">` : m.art ? `<img class="art" src="${m.art}" alt="">` : ''}
       <div style="margin-top:16px"><div style="font-size:19px;font-weight:600">${esc(m.title)}</div><div class="dim">${esc(m.artist || m.app)}</div></div>
       <div class="bar" style="margin-top:16px"><i style="width:${pct}%"></i></div>
       <div class="controls">
         <button class="btn round" data-a="previous">${icon('prev', 22)}</button>
         <button class="btn round big primary" data-a="play_pause">${icon(m.playing ? 'pause' : 'play', 28)}</button>
-        <button class="btn round" data-a="next">${icon('next', 22)}</button></div></div>`;
+        <button class="btn round" data-a="next">${icon('next', 22)}</button></div>
+      ${m.yt ? `<a class="btn" style="width:100%;margin-top:14px" data-handoff href="https://youtu.be/${m.yt.id}?t=${Math.floor(m.position || 0)}">${icon('up', 18)} Abrir no celular</a>` : ''}</div>`;
     body.onclick = async (e) => {
+      if (e.target.closest('[data-handoff]') && this.m.playing) { post('/media/play_pause', { id: this.m.id }).catch(() => {}); return; }
       const b = e.target.closest('[data-a]'); if (!b) return;
       await post('/media/' + b.dataset.a, { id: this.m.id }).catch(() => {}); setTimeout(() => this.load(), 400);
     };
   },
 });
 
-// ---------- Som (volume do PC) ----------
-view({
-  id: 'som', title: 'Som', icon: 'volUp',
-  mount(el) { el.innerHTML = back() + '<div data-body><div class="empty">Carregando…</div></div>'; wireBack(el); },
-  async show() {
-    const body = $('[data-body]', this.el);
-    let d; try { d = await api('/audio'); } catch { body.innerHTML = '<div class="empty">Sem conexão com o PC.</div>'; return; }
-    const row = (id, name, vol, muted) => `<div class="card" style="margin-bottom:10px;padding:14px 16px"><div class="row" style="gap:14px">
-      <button class="well" data-mute="${id}" style="${muted ? 'color:var(--bad)' : ''}">${icon(muted ? 'volDown' : 'volUp', 18)}</button>
-      <div style="flex:1;min-width:0"><div class="ellipsis" style="font-weight:600">${esc(name)}</div><div class="label" style="font-size:9.5px">${muted ? 'Mudo' : 'Volume'}</div></div>
-      <span style="font-size:24px;font-weight:500;letter-spacing:-.5px" data-num="${id}">${vol}</span></div>
-      <input type="range" min="0" max="100" value="${vol}" data-vol="${id}" style="--v:${vol}%;margin-top:6px"></div>`;
-    body.innerHTML = `<div class="sec">${esc(d.device || 'Saída')}</div>` + row('master', 'Volume geral', d.master, d.masterMuted)
-      + '<div class="sec">Programas</div>' + d.apps.map((a) => row(a.id, a.name, a.volume, a.muted)).join('');
-    let t;
-    body.oninput = (e) => {
-      const r = e.target.closest('[data-vol]'); if (!r) return;
-      r.style.setProperty('--v', r.value + '%'); const n = body.querySelector(`[data-num="${r.dataset.vol}"]`); if (n) n.textContent = r.value;
-      clearTimeout(t); t = setTimeout(() => post('/audio', { app: r.dataset.vol, volume: +r.value }).catch(() => {}), 150); };
-    body.onclick = async (e) => {
-      const b = e.target.closest('[data-mute]'); if (!b) return;
-      const id = b.dataset.mute, cur = id === 'master' ? d.masterMuted : d.apps.find((a) => a.id === id)?.muted;
-      await post('/audio', { app: id, mute: !cur }).catch(() => {}); this.show();
-    };
-  },
-});
-
-// ---------- Timer ----------
+// ---------- Timer: Pomodoro, seletor de tempo (como o Relógio do iPhone) e timers em anel ----------
+const ROW = 44; // altura de cada número na roda
+function wheel(max, start = 0) {
+  return `<div class="wheel" data-max="${max}"><div class="wheel-in">${Array.from({ length: max + 1 }, (_, n) => `<div>${String(n).padStart(2, '0')}</div>`).join('')}</div></div>`;
+}
 view({
   id: 'timer', title: 'Timer', icon: 'timer',
-  timers: [],
+  timers: [], pomo: null,
   mount(el) {
-    el.innerHTML = back() + `<div class="grid" style="margin-bottom:10px">${[5, 10, 15, 25, 45, 60].map((m) => `<button class="tile" data-m="${m}">${m} min</button>`).join('')}</div>
-      <div class="row"><input class="input" id="tm-min" type="number" inputmode="decimal" placeholder="Minutos"><input class="input" id="tm-label" placeholder="Nome (opcional)"><button class="btn primary" id="tm-go">Iniciar</button></div>
-      <div data-body style="margin-top:14px"></div>`;
+    el.innerHTML = back() + `
+      <div class="card pomo" style="margin-bottom:12px"><div id="pm-main"></div>
+        <div class="row" id="pm-dots" style="gap:6px;margin-top:14px"></div></div>
+      <div data-body></div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="label" style="margin-bottom:6px">Timer personalizado</div>
+        <div class="wheels">${wheel(23)}<span class="wl">h</span>${wheel(59)}<span class="wl">min</span>${wheel(59)}<span class="wl">s</span><div class="wheel-band"></div></div>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin:12px 0">${[1, 5, 10, 15, 30, 60].map((m) => `<button class="chip pick" data-m="${m}">${m < 60 ? m + ' min' : '1 h'}</button>`).join('')}</div>
+        <input class="input" id="tm-label" placeholder="Nome (opcional), ex.: Café" style="width:100%;margin-bottom:12px">
+        <button class="btn primary" id="tm-go" style="width:100%">Iniciar</button>
+      </div>`;
     wireBack(el);
-    const start = async (m, label) => { const r = await post('/timers/start', { minutes: m, label: label || 'Timer' }).catch(() => null); if (r) { this.timers = r.timers; this.render(); toast(r.msg); } };
-    el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => start(+b.dataset.m));
-    $('#tm-go').onclick = () => { const m = parseFloat($('#tm-min').value); if (m > 0) start(m, $('#tm-label').value.trim()); };
+    this.wheels = [...el.querySelectorAll('.wheel')];
+    this.set(0, 10, 0);
+    el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => { const m = +b.dataset.m; this.set(Math.floor(m / 60), m % 60, 0); });
+    const start = async (min, label) => {
+      const r = await post('/timers/start', { minutes: min, label }).catch(() => null); if (!r) return toast('Não consegui iniciar.');
+      this.apply(r);
+      const novo = label === 'Pomodoro' ? $('#pm-main') : $('[data-body]', this.el).lastElementChild;
+      if (novo) { rise(this.el, novo.closest('.card') || novo); novo.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    };
+    $('#tm-go', el).onclick = () => {
+      const [h, m, s2] = this.wheels.map((w) => Math.round(w.scrollTop / ROW)), min = h * 60 + m + s2 / 60;
+      if (min <= 0) return toast('Escolha um tempo.');
+      start(min, $('#tm-label').value.trim() || 'Timer'); $('#tm-label').value = '';
+    };
+    this.start = start;
+    $('#pm-main', el).onclick = (e) => {
+      if (e.target.closest('#pm-go')) start(this.pomo?.focus || 25, 'Pomodoro');
+      else this.control(e);
+    };
   },
-  async show() { try { this.timers = (await api('/timers')).timers; } catch {} this.render(); clearInterval(this.t); this.t = setInterval(() => this.render(), 1000); },
+  async control(e) {
+    const b = e.target.closest('[data-p],[data-c]'); if (!b) return;
+    const r = await post(b.dataset.p ? '/timers/pause' : '/timers/cancel', { id: b.dataset.p || b.dataset.c }).catch(() => null);
+    if (r) this.apply(r);
+  },
+  set(h, m, s2) { [h, m, s2].forEach((v, i) => this.wheels[i].scrollTo({ top: v * ROW, behavior: this.el.offsetParent ? 'smooth' : 'auto' })); },
+  apply(r) { this.timers = r.timers; this.pomo = r.pomodoro || this.pomo; this.render(); },
+  async show() {
+    try { this.apply(await api('/timers')); } catch {}
+    requestAnimationFrame(() => { if (!this.wheels[1].scrollTop) this.set(0, 10, 0); });
+    clearInterval(this.t); this.t = setInterval(() => this.render(), 1000);
+  },
   hide() { clearInterval(this.t); },
   render() {
     const body = this.el && $('[data-body]', this.el); if (!body) return;
+    const p = this.pomo, running = this.timers.find((t) => /^(pomodoro|pausa)$/i.test(t.label));
+    if (p) {
+      const inSet = p.done % p.every;
+      $('#pm-dots').innerHTML = Array.from({ length: p.every }, (_, k) => `<span class="pdot ${k < inSet ? 'on' : ''}"></span>`).join('')
+        + `<span class="faint" style="margin-left:6px">${p.done ? `${p.done} hoje` : 'nenhum hoje'}</span>`;
+    }
     const left = (t) => Math.max(0, Math.round(t.paused != null ? t.paused : t.end - Date.now() / 1000));
-    const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-    body.innerHTML = this.timers.length ? this.timers.map((t) => `<div class="card" style="margin-bottom:10px"><div class="row">
-      <div style="flex:1"><div class="label" style="margin-bottom:10px">${esc(t.label)}${t.paused != null ? ' · pausado' : ''}</div><div class="big-num">${fmt(left(t))}</div></div>
-      <button class="btn round" data-p="${t.id}">${icon(t.paused != null ? 'play' : 'pause', 18)}</button>
-      <button class="btn round danger" data-c="${t.id}">${icon('x', 18)}</button></div></div>`).join('') : '<div class="empty">Nenhum timer rodando.</div>';
-    body.onclick = async (e) => {
-      const b = e.target.closest('[data-p],[data-c]'); if (!b) return;
-      const r = await post(b.dataset.p ? '/timers/pause' : '/timers/cancel', { id: b.dataset.p || b.dataset.c }).catch(() => null);
-      if (r) { this.timers = r.timers; this.render(); }
-    };
+    const fmt = (s2) => { const h = Math.floor(s2 / 3600), m = Math.floor(s2 % 3600 / 60), x = s2 % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+    const R = 34, C = 2 * Math.PI * R;
+    const ring = (t, size = 84) => { const frac = t.total ? left(t) / t.total : 0; return `<svg width="${size}" height="${size}" viewBox="0 0 84 84" style="flex:none;transform:rotate(-90deg)">
+      <circle cx="42" cy="42" r="${R}" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="6"/>
+      <circle cx="42" cy="42" r="${R}" fill="none" stroke="var(--accent)" stroke-width="6" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - frac)}" style="transition:stroke-dashoffset 1s linear;filter:drop-shadow(0 0 6px var(--accent))"/></svg>`; };
+    const buttons = (t) => `<div style="display:flex;flex-direction:column;gap:8px"><button class="btn round" data-p="${t.id}">${icon(t.paused != null ? 'play' : 'pause', 18)}</button>
+      <button class="btn round danger" data-c="${t.id}">${icon('x', 18)}</button></div>`;
+    const pm = $('#pm-main');
+    if (pm) pm.innerHTML = running
+      ? `<div class="row" style="gap:16px"><div style="position:relative;display:grid;place-items:center">${ring(running)}<span class="tomato" style="position:absolute;font-size:26px">🍅</span></div>
+          <div style="flex:1;min-width:0"><div class="label" style="margin-bottom:6px">${/pausa/i.test(running.label) ? 'Pausa' : 'Foco'}${running.paused != null ? ' · pausado' : ''}</div>
+          <div class="big-num" style="font-size:40px">${fmt(left(running))}</div></div>${buttons(running)}</div>`
+      : `<div class="row" style="gap:14px"><span class="tomato">🍅</span>
+          <div style="flex:1"><div style="font-weight:600;font-size:17px">Pomodoro</div><div class="faint">${p ? `${p.focus} min de foco · ${p.break} de pausa` : ''}</div></div>
+          <button class="btn tint" id="pm-go">Focar</button></div>`;
+    const items = this.timers.filter((t) => t !== running && !/^(pomodoro|pausa)$/i.test(t.label)).map((t) => {
+      return `<div class="card" style="margin-bottom:12px;padding:16px"><div class="row" style="gap:16px">${ring(t)}
+        <div style="flex:1;min-width:0"><div class="label" style="margin-bottom:6px">${esc(t.label)}${t.paused != null ? ' · pausado' : ''}</div>
+          <div class="big-num" style="font-size:40px">${fmt(left(t))}</div></div>${buttons(t)}</div></div>`;
+    });
+    body.innerHTML = items.join('');
+    body.onclick = (e) => this.control(e);
   },
 });
 
-// ---------- Uso de IA (cota do Claude) ----------
+// ---------- Uso de IA: a mesma aba da ilha (faísca e laranja do Claude), em vidro ----------
+const SPARK = (sz) => `<svg viewBox="0 0 24 24" width="${sz}" height="${sz}"><g fill="currentColor">` +
+  [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a, i) => `<rect x="11" y="${i % 2 ? 3.5 : 1.5}" width="2" height="${i % 2 ? 8 : 10}" rx="1" transform="rotate(${a} 12 12)"/>`).join('') + '</g></svg>';
+const CLAUDE = '#d97857';
+const usd = (v) => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: v >= 1000 ? 0 : 2, maximumFractionDigits: v >= 1000 ? 0 : 2 });
+const compact = (n) => n >= 1e9 ? (n / 1e9).toFixed(1) + ' bi' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' mi' : n >= 1e3 ? Math.round(n / 1e3) + ' mil' : String(n || 0);
+const countdown = (ms) => { ms = Math.max(0, ms); const d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4); return d ? `${d}d ${h}h` : h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`; };
+const modelTint = (m) => /opus|fable/i.test(m) ? CLAUDE : /sonnet/i.test(m) ? '#e8b48a' : /haiku/i.test(m) ? '#8fb3ff' : '#9a9aa2';
+const modelName = (m) => m.replace(/^claude-/, '').replace(/-(\d+)-(\d+).*$/, ' $1.$2').replace(/^\w/, (c) => c.toUpperCase());
+const mmss = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m ${String(s % 60).padStart(2, '0')}s`; };
 view({
   id: 'ia', title: 'Uso de IA', icon: 'gauge',
-  mount(el) { el.innerHTML = back() + '<div data-body><div class="empty">Carregando…</div></div>'; wireBack(el); },
+  period: store.get('orbit.ia.period', 'week'),
+  mount(el) {
+    el.innerHTML = back() + `<div class="row" style="margin:0 4px 14px;gap:10px"><span style="color:${CLAUDE};display:flex">${SPARK(26)}</span>
+      <b style="font-size:20px;flex:1">Claude</b><div class="row" id="ia-per" style="gap:6px"></div></div><div data-body><div class="empty">Somando tokens…</div></div>`;
+    wireBack(el);
+    $('#ia-per').onclick = (e) => { const b = e.target.closest('[data-p]'); if (!b) return; this.period = b.dataset.p; store.set('orbit.ia.period', this.period); this.render(); rise(this.el); };
+  },
   async show() {
-    const body = $('[data-body]', this.el);
-    let d; try { d = await api('/claude'); } catch { body.innerHTML = '<div class="empty">Sem conexão com o PC.</div>'; return; }
-    const live = d.live || {};
-    const box = (lab, w) => w ? `<div class="card" style="margin-bottom:12px"><div class="row"><span class="label" style="flex:1">${lab}</span><span class="live">AO VIVO</span></div>
-      <div style="margin:16px 0 18px"><span class="big-num" data-count="${Math.round(w.used_pct)}">0</span><span class="unit">% USADO</span></div>
-      <div class="bar"><i style="width:${Math.min(100, w.used_pct)}%"></i></div>
-      <div class="faint" style="margin-top:10px">Renova ${dayLabel(w.resets_at * 1000).toLowerCase()} às ${hhmm(w.resets_at * 1000)}</div></div>` : '';
-    body.innerHTML = (box('Janela de 5 horas', live.five_hour) + box('Semana', live.seven_day)) || '<div class="empty">Sem dados da cota ainda.</div>';
-    if (d.tasks?.length) body.innerHTML += '<div class="sec">Claude trabalhando</div><div class="list">' + d.tasks.map((t) => `<div class="item"><span class="grow">${esc(t.project)}</span><span class="faint">desde ${hhmm(t.start * 1000)}</span></div>`).join('') + '</div>';
+    try { [this.q, this.u] = await Promise.all([api('/claude'), api('/ai-usage')]); } catch { $('[data-body]', this.el).innerHTML = '<div class="empty">Sem conexão com o PC.</div>'; return; }
+    this.render();
+  },
+  sum() {
+    const days = this.u?.claude?.days || {}, n = { today: 1, week: 7, month: 30 }[this.period];
+    const out = { input: 0, cached: 0, output: 0, cost: 0, messages: 0, models: {}, projects: {}, series: [] };
+    for (let i = n - 1; i >= 0; i--) {
+      const key = new Date(Date.now() - i * 864e5).toLocaleDateString('sv-SE'), d = days[key];
+      out.series.push({ key, cost: d?.cost || 0 });
+      if (!d) continue;
+      for (const k of ['input', 'cached', 'output', 'cost', 'messages']) out[k] += d[k];
+      for (const g of ['models', 'projects']) for (const [name, v] of Object.entries(d[g])) { const o = (out[g][name] ||= { tokens: 0, cost: 0 }); o.tokens += v.tokens; o.cost += v.cost; }
+    }
+    out.tokens = out.input + out.output + out.cached;
+    return out;
+  },
+  card(title, ico, body, extra = '') {
+    return `<div class="card" style="margin-bottom:12px"><div class="row" style="gap:8px;margin-bottom:12px"><span style="color:${CLAUDE};display:flex">${ico}</span><span class="label" style="flex:1">${title}</span>${extra}</div>${body}</div>`;
+  },
+  meter(frac, tint, pace) {
+    return `<div class="bar" style="position:relative;overflow:visible;height:6px"><i style="width:${Math.max(frac > 0 ? 2 : 0, Math.min(100, frac * 100))}%;background:${tint};box-shadow:0 0 10px ${tint}"></i>${
+      pace > 0.02 && pace < 0.98 ? `<b style="position:absolute;top:-4px;left:${pace * 100}%;width:2px;height:14px;border-radius:1px;background:#fff;opacity:.7"></b>` : ''}</div>`;
+  },
+  render() {
+    const body = $('[data-body]', this.el); if (!body || !this.u) return;
+    $('#ia-per').innerHTML = [['today', 'Hoje'], ['week', '7 dias'], ['month', '30 dias']].map(([k, l]) => `<button class="chip pick${this.period === k ? ' on' : ''}" data-p="${k}" style="padding:6px 10px">${l}</button>`).join('');
+    const u = this.sum(), L = this.q?.live || {}, now = Date.now();
+    const lim = (label, w, hours) => {
+      if (!w) return `<div style="margin-bottom:14px"><div class="row"><span style="flex:1">${label}</span><span class="faint">sem dado</span></div></div>`;
+      const used = Math.min(100, w.used_pct || 0) / 100, reset = w.resets_at * 1000, tint = used >= 0.95 ? 'var(--bad)' : used >= 0.8 ? '#ff9f43' : CLAUDE;
+      return `<div style="margin-bottom:16px"><div class="row" style="margin-bottom:8px;align-items:baseline"><span style="flex:1;font-weight:600">${label}</span>
+        <span class="faint" style="margin-right:10px">↻ ${countdown(reset - now)}</span><span style="font-size:22px;font-weight:500;${used >= 0.8 ? 'color:' + tint : ''}" data-count="${Math.round(used * 100)}">0</span><span class="unit" style="margin-left:2px">%</span></div>
+        ${this.meter(used, tint, 1 - (reset - now) / (hours * 36e5))}</div>`;
+    };
+    const models = Object.entries(u.models).filter(([, v]) => v.cost > 0).sort((a, b) => b[1].cost - a[1].cost), tot = models.reduce((n, [, v]) => n + v.cost, 0);
+    const split = `<div style="display:flex;gap:3px;height:6px;border-radius:3px;overflow:hidden;margin:14px 0 10px">${tot ? models.map(([m, v]) => `<i style="flex:${v.cost / tot};background:${modelTint(m)}"></i>`).join('') : '<i style="flex:1;background:#ffffff22"></i>'}</div>`;
+    const cacheRate = u.input + u.cached ? u.cached / (u.input + u.cached) : 0;
+    const tasks = this.q?.tasks || [], ol = this.u.ollama;
+    const max = Math.max(0.01, ...u.series.map((d) => d.cost)), many = u.series.length > 7;
+    const bars = `<div style="display:flex;align-items:flex-end;gap:${many ? 2 : 8}px;height:76px">${u.series.map((d, i) => {
+      const lbl = u.series.length === 1 ? 'hoje' : many ? (i === 0 || i === u.series.length - 1 ? d.key.slice(8) + '/' + d.key.slice(5, 7) : '') : new Date(d.key + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'narrow' });
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><i style="display:block;width:100%;max-width:26px;border-radius:5px;height:${Math.max(3, 54 * d.cost / max)}px;background:${i === u.series.length - 1 ? CLAUDE : 'rgba(255,255,255,.14)'}"></i><span class="faint" style="font-size:10px">${lbl}</span></div>`;
+    }).join('')}</div>`;
+    const share = (entries, name, tint) => Object.entries(entries).sort((a, b) => b[1].cost - a[1].cost).slice(0, 4).map(([k, v], _, arr) => `<div style="margin-bottom:12px">
+      <div class="row" style="margin-bottom:6px;gap:8px"><span class="ellipsis" style="flex:1">${esc(name(k))}</span><span class="faint">${compact(v.tokens)}</span><b style="min-width:62px;text-align:right">${usd(v.cost)}</b></div>
+      ${this.meter(v.cost / Math.max(0.0001, arr[0][1].cost), tint(k))}</div>`).join('') || '<div class="faint">Nada no período.</div>';
+    body.innerHTML =
+      this.card('Limites', SPARK(16), lim('Sessão (5 h)', L.five_hour, 5) + lim('Semana', L.seven_day, 168), '<span class="live" style="color:' + CLAUDE + '">AO VIVO</span>')
+      + this.card('Gasto', icon('gauge', 16), `<div><span class="big-num">${usd(u.cost)}</span></div><div class="label" style="margin-top:6px">valor em API · estimado</div>${split}
+        <div class="faint">${compact(u.tokens)} tokens${cacheRate ? ` · ${Math.round(cacheRate * 100)}% do cache` : ''} · ${u.messages} respostas</div>`)
+      + this.card('Agora', icon('spark', 16), (tasks.length ? tasks.map((t) => `<div class="row" style="gap:10px;margin-bottom:8px"><span style="color:${CLAUDE};display:flex;animation:spin 3s linear infinite">${SPARK(14)}</span><b class="ellipsis" style="flex:1">${esc(t.project)}</b><span class="faint">${mmss(Date.now() / 1000 - t.start)}</span></div>`).join('') : '<div class="faint" style="margin-bottom:8px">Nenhuma tarefa rodando.</div>')
+        + `<div class="row"><span class="dim" style="flex:1">Ollama (${esc(nome())})</span><span class="chip" style="color:${ol && ol.length ? 'var(--ok)' : 'var(--faint)'}">${ol && ol.length ? 'carregado' : ol ? 'parado' : 'desligado'}</span></div>`)
+      + this.card('Tendência', icon('up', 16), bars, `<span class="faint">pico ${usd(max)}/dia</span>`)
+      + this.card('Modelos', icon('cpu', 16), share(u.models, modelName, modelTint))
+      + this.card('Projetos', icon('folder', 16), share(u.projects, (p) => p, () => CLAUDE));
   },
 });
 
@@ -393,16 +511,117 @@ view({
   },
 });
 
-// ---------- Notas ----------
+// ---------- Notas (uma por assunto): deslizar para arquivar/excluir, links clicáveis ----------
+const URL_RE = /https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]/g;
+const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+// Texto da nota com os links virando pílulas tocáveis (domínio + ícone), o resto como texto normal.
+function linkify(text) {
+  let out = '', last = 0;
+  for (const m of String(text || '').matchAll(URL_RE)) {
+    out += esc(text.slice(last, m.index)) + `<a class="link-pill" href="${esc(m[0])}" target="_blank" rel="noopener">${icon('link', 14)}<span>${esc(host(m[0]))}</span></a>`;
+    last = m.index + m[0].length;
+  }
+  return out + esc(String(text || '').slice(last));
+}
 view({
   id: 'notas', title: 'Notas', icon: 'note',
-  mount(el) {
-    el.innerHTML = back() + '<textarea class="input" id="nt" placeholder="Bloco de notas (o mesmo da ilha)…"></textarea><div class="faint" id="nt-st" style="margin:6px 4px"></div>';
-    wireBack(el);
-    let t; $('#nt').oninput = () => { $('#nt-st').textContent = 'Salvando…'; clearTimeout(t); t = setTimeout(async () => { await post('/notes', { text: $('#nt').value }).catch(() => {}); $('#nt-st').textContent = 'Salvo'; }, 700); };
+  notes: [], open: null, showArchived: false,
+  mount(el) { el.innerHTML = '<div data-body></div>'; },
+  async show() { try { this.notes = (await api('/notes')).notes; } catch {} if (this.open == null) this.list(); },
+  list() {
+    this.open = null;
+    const body = $('[data-body]', this.el), active = this.notes.filter((n) => !n.archived), archived = this.notes.filter((n) => n.archived);
+    const row = (n) => `<div class="swipe" data-id="${n.id}">
+        <div class="swipe-acts"><button class="sw-arch" data-arch="${n.id}">${icon('inbox', 18)}<span>${n.archived ? 'Voltar' : 'Arquivar'}</span></button>
+          <button class="sw-del" data-del="${n.id}">${icon('trash', 18)}<span>Excluir</span></button></div>
+        <div class="item swipe-front"><span class="well">${icon('note', 18)}</span><div class="grow"><div class="ellipsis" style="font-weight:600">${esc(n.title || 'Sem título')}</div>
+          <div class="faint ellipsis">${esc((n.text || '').replace(/\s+/g, ' ').slice(0, 90)) || 'Vazia'}</div></div>
+          ${/https?:\/\//.test(n.text || '') ? `<span class="faint" style="display:flex">${icon('link', 15)}</span>` : ''}</div></div>`;
+    body.innerHTML = back() + `<button class="btn primary" data-new style="width:100%;margin-bottom:12px">${icon('plus', 18)} Nova nota</button>`
+      + (active.length ? '<div class="list">' + active.map(row).join('') + '</div>' : '<div class="empty">Nenhuma nota.</div>')
+      + (archived.length ? `<button class="sec" data-toggle style="display:flex;gap:6px;align-items:center">${icon(this.showArchived ? 'down' : 'right', 14)} Arquivadas (${archived.length})</button>`
+        + (this.showArchived ? '<div class="list">' + archived.map(row).join('') + '</div>' : '') : '')
+      + '<div class="faint" style="text-align:center;margin-top:14px">Deslize uma nota para o lado para arquivar ou excluir.</div>';
+    wireBack(body);
+    $('[data-new]', body).onclick = () => this.edit({ id: '', title: '', text: '' }, true);
+    $('[data-toggle]', body)?.addEventListener('click', () => { this.showArchived = !this.showArchived; this.list(); });
+    body.querySelectorAll('.swipe').forEach((sw) => this.swipe(sw));
+    rise(this.el);
   },
-  async show() { try { if (document.activeElement !== $('#nt')) $('#nt').value = (await api('/notes')).text; } catch {} },
+  // Deslizar para a esquerda revela Arquivar e Excluir (como no app Notas); toque abre a nota.
+  swipe(sw) {
+    const front = $('.swipe-front', sw), OPEN = -164;
+    let x0 = null, y0 = 0, dx = 0, base = 0, moved = false;
+    const set = (v, anim) => { front.style.transition = anim ? 'transform .3s var(--settle)' : 'none'; front.style.transform = `translateX(${v}px)`; sw.classList.toggle('moving', v < 0); };
+    sw.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; base = sw.classList.contains('open') ? OPEN : 0; moved = false; }, { passive: true });
+    sw.addEventListener('touchmove', (e) => {
+      if (x0 == null) return;
+      dx = e.touches[0].clientX - x0;
+      if (!moved && Math.abs(e.touches[0].clientY - y0) > Math.abs(dx)) { x0 = null; return; } // rolagem vertical
+      moved = true; set(Math.min(0, Math.max(OPEN - 40, base + dx)));
+    }, { passive: true });
+    sw.addEventListener('touchend', () => {
+      if (x0 == null) return; x0 = null;
+      if (!moved) return;
+      const open = base + dx < OPEN / 2;
+      this.el.querySelectorAll('.swipe.open').forEach((o) => { if (o !== sw) { o.classList.remove('open'); $('.swipe-front', o).style.transform = ''; } });
+      sw.classList.toggle('open', open); set(open ? OPEN : 0, true);
+    });
+    front.addEventListener('click', () => {
+      if (moved) return;
+      if (sw.classList.contains('open')) { sw.classList.remove('open'); set(0, true); return; }
+      this.edit(this.notes.find((n) => n.id === sw.dataset.id));
+    });
+    $('[data-arch]', sw).onclick = async () => {
+      const n = this.notes.find((x) => x.id === sw.dataset.id);
+      await post('/notes/archive', { id: n.id, archived: !n.archived, source: 'celular' }).catch(() => {});
+      toast(n.archived ? 'Nota de volta.' : 'Nota arquivada.'); await this.show(); this.list();
+    };
+    $('[data-del]', sw).onclick = async () => {
+      const n = this.notes.find((x) => x.id === sw.dataset.id);
+      sw.style.transition = 'opacity .25s, max-height .3s'; sw.style.maxHeight = sw.offsetHeight + 'px';
+      requestAnimationFrame(() => { sw.style.opacity = 0; sw.style.maxHeight = '0px'; });
+      await post('/notes/delete', { id: n.id, source: 'celular' }).catch(() => {});
+      undoToast('Nota excluída.', async () => { await post('/notes', { title: n.title, text: n.text, source: 'celular' }); await this.show(); this.list(); });
+      setTimeout(async () => { await this.show(); this.list(); }, 320);
+    };
+  },
+  // Abre em leitura (links em pílulas); tocar no texto ou em Editar entra na edição. Nota nova já abre editando.
+  edit(n, editing = false) {
+    this.open = n.id;
+    const body = $('[data-body]', this.el);
+    const head = `<div class="row" style="margin-bottom:10px"><button class="back" data-list style="margin:0;flex:1">${icon('left', 18)} Notas</button><span class="faint" id="nt-st"></span></div>`;
+    if (!editing) {
+      body.innerHTML = head + `<div class="card note-read"><h2 style="margin:0 0 12px;font-size:22px;font-weight:600">${esc(n.title || 'Sem título')}</h2>
+        <div class="note-text">${linkify(n.text) || '<span class="faint">Vazia. Toque para escrever.</span>'}</div></div>
+        <button class="btn" data-editbtn style="width:100%;margin-top:12px">${icon('note', 17)} Editar</button>`;
+      $('[data-list]', body).onclick = () => this.list();
+      const go = (e) => { if (!e.target.closest('a')) this.edit(n, true); };
+      $('.note-read', body).onclick = go; $('[data-editbtn]', body).onclick = go;
+      rise(this.el); return;
+    }
+    body.innerHTML = head + `<input class="input" id="nt-title" placeholder="Título" value="${esc(n.title)}" style="width:100%;font-weight:600;margin-bottom:10px">
+      <textarea class="input" id="nt" placeholder="Escreva aqui…">${esc(n.text)}</textarea>`;
+    let t;
+    const save = () => {
+      $('#nt-st').textContent = 'Salvando…'; clearTimeout(t);
+      t = setTimeout(async () => {
+        const r = await post('/notes', { id: this.open || '', title: $('#nt-title').value.trim() || 'Sem título', text: $('#nt').value, source: 'celular' }).catch(() => null);
+        if (r?.note) { this.open = r.note.id; Object.assign(n, r.note); $('#nt-st').textContent = 'Salvo'; } else $('#nt-st').textContent = 'Não salvou';
+      }, 600);
+    };
+    $('#nt-title').oninput = save; $('#nt').oninput = save;
+    $('[data-list]', body).onclick = async () => { clearTimeout(t); await this.show(); this.list(); };
+    (n.id ? $('#nt') : $('#nt-title')).focus();
+  },
 });
+// Aviso com "Desfazer" (excluir nota).
+function undoToast(text, undo) {
+  const tEl = $('#toast'); tEl.innerHTML = `<div class="row"><span style="flex:1">${esc(text)}</span><button class="btn" style="height:34px" id="undo">Desfazer</button></div>`;
+  tEl.hidden = false; clearTimeout(toast.t);
+  $('#undo').onclick = () => { tEl.hidden = true; undo(); };
+  toast.t = setTimeout(() => { tEl.hidden = true; }, 5000);
+}
 
 // ---------- Avisos ----------
 const KIND = { reminder: 'bell', timer: 'timer', meeting: 'calendar', email: 'inbox', render: 'film', claude_done: 'spark', brief: 'spark' };
@@ -454,7 +673,7 @@ async function enablePush() {
 }
 
 // ---------- Mais ----------
-const MORE = ['avisos', 'som', 'timer', 'ia', 'arquivos', 'notas', 'ajustes'];
+const MORE = ['avisos', 'timer', 'ia', 'arquivos', 'notas', 'ajustes'];
 view({
   id: 'mais', title: 'Mais', icon: 'plus',
   mount(el) {
@@ -478,14 +697,21 @@ function applyColors(c) {
   const r = document.documentElement.style, solid = c.mode === 'solid';
   r.setProperty('--accent', c.c1); r.setProperty('--accent2', solid ? c.c1 : c.c2); r.setProperty('--accent3', solid ? c.c1 : c.c3);
 }
+// O Safari desiste do canal para sempre quando o PC responde com erro (ex.: a assistente reiniciando).
+// Aqui ele é refeito sozinho; "sem conexão" só aparece se o PC continuar fora depois de alguns segundos.
+let es = null, retry = 0, netTimer = null;
 function live() {
-  const es = new EventSource('/api/events');
-  es.onopen = () => { $('#net').hidden = true; };
-  es.onerror = () => { $('#net').hidden = false; };
+  if (es) es.close();
+  es = new EventSource('/api/events');
+  es.onopen = () => { retry = 0; clearTimeout(netTimer); $('#net').hidden = true; };
+  es.onerror = () => {
+    clearTimeout(netTimer); netTimer = setTimeout(() => { $('#net').hidden = false; }, 6000);
+    if (es.readyState === EventSource.CLOSED) setTimeout(live, Math.min(30000, 1000 * 2 ** retry++));
+  };
   es.onmessage = (e) => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
     if (ev.type === 'notify' && !['mute', 'error'].includes(ev.kind)) { toast(ev.text, 5000); badge(); if (current === 'avisos') V.avisos.show(); }
-    if (ev.type === 'timers' && V.timer.el) { V.timer.timers = ev.timers; V.timer.render(); }
+    if (ev.type === 'timers' && V.timer.el) { V.timer.timers = ev.timers; V.timer.render(); if (current === 'timer') api('/timers').then((r) => V.timer.apply(r)).catch(() => {}); }
     // A assistente ouvindo/pensando/falando no PC aparece na pílula do celular (sem som).
     if (ev.type === 'state' && (island.st === 'idle' || island.pc)) {
       island.pc = ev.state !== 'idle';
@@ -521,5 +747,9 @@ function showPair() {
   buildTabs();
   go(location.hash.slice(1) || 'sexta');
   live();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { V[current]?.show?.(); badge(); } });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (!es || es.readyState !== EventSource.OPEN) { retry = 0; live(); } // voltou ao app: reconecta na hora
+    V[current]?.show?.(); badge();
+  });
 })();

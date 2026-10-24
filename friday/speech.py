@@ -3,6 +3,7 @@
 Ex.: "11 GB (70%)" -> "11 gigabytes, 70 por cento"; "C:\\Users\\ana\\Downloads" -> "a pasta Downloads".
 """
 import re
+import unicodedata
 
 UNITS = {
     "TB": "terabytes", "GB": "gigabytes", "MB": "megabytes", "KB": "kilobytes",
@@ -41,6 +42,9 @@ def _date(d: str, m: str) -> str:
 
 def for_speech(text: str) -> str:
     t = text
+    # Emoji não se fala ("beber água 💧" virava "beber água, gota"): sai antes de tudo.
+    t = "".join(ch for ch in t if unicodedata.category(ch) != "So" and ch not in "‍️︎"
+                and not "\U0001f3fb" <= ch <= "\U0001f3ff")  # tons de pele
     # Markdown e símbolos que a voz lê errado
     t = re.sub(r"[*_`#>|]+", "", t)
     t = re.sub(r"https?://\S+", "o link", t)

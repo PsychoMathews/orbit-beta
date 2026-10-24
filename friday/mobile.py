@@ -22,6 +22,7 @@ import secrets
 import subprocess
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 from aiohttp import web
@@ -304,6 +305,136 @@ async def voice_in(request: web.Request) -> web.Response:
     return web.json_response(await _answer(text, True, brain, config, voice))
 
 
+# ---------- Música: o vídeo do YouTube por trás do que toca no PC ----------
+# O Windows só conta título, canal e uma capa pequena. Achando o vídeo (busca pelo título, conferida pela duração),
+# o celular ganha a capa em alta e o "Abrir no celular" no ponto em que estava.
+_yt: dict = {}           # (título, canal) -> {"id", ...} ou None (não achou)
+_yt_busy: set = set()
+
+
+def _yt_find(title: str, artist: str, duration: float) -> None:
+    import sys
+    key = (title, artist)
+    try:
+        out = subprocess.run([sys.executable, "-m", "yt_dlp", "--flat-playlist", "-j", f"ytsearch3:{title} {artist}"],
+                             capture_output=True, text=True, encoding="utf-8", timeout=25,
+                             creationflags=subprocess.CREATE_NO_WINDOW).stdout
+        found = None
+        for line in out.splitlines():
+            v = json.loads(line)
+            same = (v.get("title") or "").casefold() == title.casefold()
+            if v.get("id") and (same or (duration and v.get("duration") and abs(v["duration"] - duration) <= 5)):
+                found = {"id": v["id"], "title": v.get("title"), "channel": v.get("channel")}
+                break
+        _yt[key] = found
+    except Exception:
+        log.debug("Celular: busca no YouTube falhou", exc_info=True)
+        _yt[key] = None
+    finally:
+        _yt_busy.discard(key)
+
+
+async def media_get(request: web.Request) -> web.Response:
+    from . import nowplaying
+    try:
+        m = await asyncio.wait_for(asyncio.to_thread(nowplaying.now_playing), 6)
+    except asyncio.TimeoutError:
+        return web.json_response({"title": None, "playing": False})
+    m.pop("sessions", None)
+    title, artist = m.get("title") or "", m.get("artist") or ""
+    if title and "spotify" not in str(m.get("app", "")).lower():
+        key = (title, artist)
+        if key in _yt:
+            if _yt[key]:
+                vid = _yt[key]["id"]
+                m["yt"] = {"id": vid, "thumb": f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg",
+                           "thumb_hq": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"}
+        elif key not in _yt_busy:
+            _yt_busy.add(key)
+            asyncio.get_running_loop().run_in_executor(None, _yt_find, title, artist, float(m.get("duration") or 0))
+    return web.json_response(m)
+
+
+# ---------- Uso de IA: o mesmo cálculo da aba da ilha (main.js scanTokens), para o celular ----------
+# Lê os registros do Claude Code (só o que foi acrescentado desde a última vez) e soma por dia: tokens, valor
+# estimado em API, modelos e projetos dos últimos 31 dias.
+CLAUDE_LOGS = Path.home() / ".claude" / "projects"
+_PRICES = [("haiku", 1, 5), ("sonnet", 3, 15), ("opus", 5, 25), ("fable", 5, 25)]
+_token_files: dict = {}  # arquivo -> {"offset", "rest", "entries": {id: registro}}
+
+
+def _cost(model: str, u: dict) -> float:
+    p = next((x for x in _PRICES if x[0] in model), _PRICES[1])
+    return ((u.get("input_tokens") or 0) * p[1] + (u.get("cache_creation_input_tokens") or 0) * p[1] * 1.25
+            + (u.get("cache_read_input_tokens") or 0) * p[1] * 0.1 + (u.get("output_tokens") or 0) * p[2]) / 1e6
+
+
+def _read_appended(path: Path, size: int, mtime: float) -> None:
+    known = _token_files.get(path)
+    if not known or size < known["offset"]:
+        known = _token_files[path] = {"offset": 0, "rest": "", "entries": {}}
+    if size == known["offset"]:
+        return
+    with path.open("rb") as f:
+        f.seek(known["offset"])
+        chunk = f.read(size - known["offset"])
+    known["offset"] = size
+    lines = (known["rest"] + chunk.decode("utf-8", "ignore")).split("\n")
+    known["rest"] = lines.pop()
+    for line in lines:
+        if '"usage"' not in line:
+            continue
+        try:
+            j = json.loads(line)
+            m = j.get("message") or {}
+            u = m.get("usage")
+            if not u or not m.get("id"):
+                continue
+            ts = j.get("timestamp")
+            day = (datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone() if ts else datetime.fromtimestamp(mtime)).strftime("%Y-%m-%d")
+            model = m.get("model") or "?"
+            known["entries"][m["id"]] = {
+                "day": day, "model": model, "cost": _cost(model, u), "project": Path(j["cwd"]).name if j.get("cwd") else "?",
+                "input": (u.get("input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0),
+                "cached": u.get("cache_read_input_tokens") or 0, "output": u.get("output_tokens") or 0}
+        except Exception:
+            continue
+
+
+def ai_usage() -> dict:
+    since = time.time() - 31 * 86400
+    try:
+        for f in CLAUDE_LOGS.glob("*/*.jsonl"):
+            st = f.stat()
+            if st.st_mtime >= since:
+                _read_appended(f, st.st_size, st.st_mtime)
+    except OSError:
+        pass
+    days: dict = {}
+    for known in _token_files.values():
+        for e in known["entries"].values():
+            d = days.setdefault(e["day"], {"input": 0, "cached": 0, "output": 0, "cost": 0.0, "messages": 0, "models": {}, "projects": {}})
+            for k in ("input", "cached", "output", "cost"):
+                d[k] += e[k]
+            d["messages"] += 1
+            t = e["input"] + e["output"] + e["cached"]
+            for group, name in (("models", e["model"]), ("projects", e["project"])):
+                g = d[group].setdefault(name, {"tokens": 0, "cost": 0.0})
+                g["tokens"] += t
+                g["cost"] += e["cost"]
+    ollama = None
+    try:
+        import httpx
+        ollama = httpx.get("http://127.0.0.1:11434/api/ps", timeout=2).json().get("models", [])
+    except Exception:
+        pass
+    return {"claude": {"days": days}, "ollama": ollama}
+
+
+async def ai_usage_get(request: web.Request) -> web.Response:
+    return web.json_response(await asyncio.to_thread(ai_usage))
+
+
 async def reminders_post(request: web.Request) -> web.Response:
     from . import proactive
     b = await request.json()
@@ -442,10 +573,8 @@ async def start() -> None:
     r.add_get("/api/push/key", push_key)
     r.add_post("/api/push/subscribe", push_subscribe)
     r.add_post("/api/push/test", push_test)
-    r.add_get("/api/media", orbit.media_get)
+    r.add_get("/api/media", media_get)
     r.add_post("/api/media/{action}", orbit.media_post)
-    r.add_get("/api/audio", orbit.audio_get)
-    r.add_post("/api/audio", orbit.audio_post)
     r.add_get("/api/agenda", orbit.agenda)
     r.add_post("/api/agenda/done", orbit.agenda_done)
     r.add_get("/api/reminders", orbit.reminders)
@@ -454,7 +583,10 @@ async def start() -> None:
     r.add_post("/api/timers/{action}", orbit.timers_post)
     r.add_get("/api/notes", orbit.notes_get)
     r.add_post("/api/notes", orbit.notes_post)
+    r.add_post("/api/notes/delete", orbit.notes_delete)
+    r.add_post("/api/notes/archive", orbit.notes_archive)
     r.add_get("/api/claude", orbit.claude_get)
+    r.add_get("/api/ai-usage", ai_usage_get)
     r.add_get("/api/pending", orbit.pending_get)
     r.add_post("/api/confirm", orbit.confirm_post)
     r.add_get("/api/files", files_get)
