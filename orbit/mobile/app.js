@@ -304,14 +304,21 @@ view({
 
 // ---------- Música (o que toca no PC) ----------
 view({
-  id: 'midia', title: 'Música', icon: 'music',
+  id: 'midia', title: 'Player', icon: 'play',
   mount(el) { el.innerHTML = '<div data-body><div class="empty">Carregando…</div></div>'; },
   show() { this.load(); clearInterval(this.t); this.t = setInterval(() => this.load(), 3000); },
   hide() { clearInterval(this.t); },
   async load() {
     const body = $('[data-body]', this.el);
     let m; try { m = await api('/media'); } catch { body.innerHTML = '<div class="empty">Sem conexão com o PC.</div>'; return; }
+    // Mesmo vídeo e mesmo estado: só anda a barra de tempo, sem refazer a tela (a capa não pisca).
+    const same = this.m && m.title === this.m.title && m.playing === this.m.playing && !!m.yt === !!this.m.yt;
     this.m = m;
+    if (same && body.querySelector('.bar > i')) {
+      body.querySelector('.bar > i').style.width = (m.duration ? Math.min(100, (m.position / m.duration) * 100) : 0) + '%';
+      const h = body.querySelector('[data-handoff]'); if (h && m.yt) h.href = `https://youtu.be/${m.yt.id}?t=${Math.floor(m.position || 0)}`; // abre no ponto atual
+      return;
+    }
     if (!m.title) { body.innerHTML = '<div class="empty">Nada tocando no PC.</div>'; return; }
     const pct = m.duration ? Math.min(100, (m.position / m.duration) * 100) : 0;
     body.innerHTML = `<div class="card"><div class="row" style="margin-bottom:14px"><span class="label" style="flex:1">Tocando no PC</span>${m.playing ? '<span class="live">AO VIVO</span>' : '<span class="label">Pausado</span>'}</div>

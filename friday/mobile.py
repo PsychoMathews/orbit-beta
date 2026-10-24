@@ -346,7 +346,24 @@ async def voice_in(request: web.Request) -> web.Response:
 # O Windows só conta título, canal e uma capa pequena. Achando o vídeo (busca pelo título, conferida pela duração),
 # o celular ganha a capa em alta e o "Abrir no celular" no ponto em que estava.
 _yt: dict = {}           # (título, canal) -> {"id", ...} ou None (não achou)
-_yt_busy: set = set()
+_yt_busy: dict = {}      # (título, canal) -> Future da busca em andamento
+YT_CACHE = MEMORIA / ".youtube.json"  # o que já foi achado sobrevive aos reinícios
+
+
+def _yt_load() -> None:
+    try:
+        for row in json.loads(YT_CACHE.read_text(encoding="utf-8")):
+            _yt[(row["title"], row["artist"])] = row["video"]
+    except Exception:
+        pass
+
+
+def _yt_save() -> None:
+    rows = [{"title": k[0], "artist": k[1], "video": v} for k, v in _yt.items() if v][-300:]
+    try:
+        YT_CACHE.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        log.debug("Celular: não salvei a lista do YouTube", exc_info=True)
 
 
 def _yt_find(title: str, artist: str, duration: float) -> None:
@@ -364,11 +381,11 @@ def _yt_find(title: str, artist: str, duration: float) -> None:
                 found = {"id": v["id"], "title": v.get("title"), "channel": v.get("channel")}
                 break
         _yt[key] = found
+        if found:
+            _yt_save()
     except Exception:
         log.debug("Celular: busca no YouTube falhou", exc_info=True)
         _yt[key] = None
-    finally:
-        _yt_busy.discard(key)
 
 
 async def media_get(request: web.Request) -> web.Response:
@@ -381,14 +398,24 @@ async def media_get(request: web.Request) -> web.Response:
     title, artist = m.get("title") or "", m.get("artist") or ""
     if title and "spotify" not in str(m.get("app", "")).lower():
         key = (title, artist)
-        if key in _yt:
-            if _yt[key]:
-                vid = _yt[key]["id"]
-                m["yt"] = {"id": vid, "thumb": f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg",
-                           "thumb_hq": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"}
-        elif key not in _yt_busy:
-            _yt_busy.add(key)
-            asyncio.get_running_loop().run_in_executor(None, _yt_find, title, artist, float(m.get("duration") or 0))
+        if not _yt:
+            _yt_load()
+        if key not in _yt:
+            # Primeira vez com este vídeo: espera a busca (uns 2 s) para a tela já abrir com a capa em alta e o
+            # "Abrir no celular", em vez de trocar depois. Pedidos que chegam juntos esperam a mesma busca.
+            fut = _yt_busy.get(key)
+            if fut is None:
+                fut = _yt_busy[key] = asyncio.get_running_loop().run_in_executor(None, _yt_find, title, artist, float(m.get("duration") or 0))
+                fut.add_done_callback(lambda _f, k=key: _yt_busy.pop(k, None))
+            try:
+                await asyncio.wait_for(asyncio.shield(fut), 4)
+            except asyncio.TimeoutError:
+                pass
+        if _yt.get(key):
+            vid = _yt[key]["id"]
+            m["yt"] = {"id": vid, "thumb": f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg",
+                       "thumb_hq": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"}
+            m.pop("art", None)  # a capa pequena do Windows não precisa ir junto
     return web.json_response(m)
 
 

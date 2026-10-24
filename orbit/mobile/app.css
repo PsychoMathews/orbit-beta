@@ -78,10 +78,11 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 @keyframes sink { to { opacity: 0; transform: translateY(-12px) scale(.98); filter: blur(12px); } }
 @media (prefers-reduced-motion: reduce) { .rise, .view.leaving { animation: none; } }
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
-#tabs { display: flex; margin: 0 12px calc(var(--bottom) + 8px); padding: 6px; border-radius: 26px; }
+#tabs { display: flex; gap: 2px; margin: 0 10px calc(var(--bottom) + 8px); padding: 6px; border-radius: 26px; }
 #tabs button { flex: 1; min-width: 0; white-space: nowrap; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 20px;
   color: var(--faint); font-size: 10px; font-weight: 600; letter-spacing: .3px; transition: color .2s, background .2s; }
-#tabs button.on { color: var(--fg); background: rgba(255, 255, 255, .07); }
+#tabs button.on { color: var(--fg); background: rgba(255, 255, 255, .07); flex: 0 0 auto; padding: 7px 12px; }
+#tabs button { transition: color .2s, background .2s, flex-basis .25s; }
 #tabs button.on .ico { color: var(--accent); }
 
 /* ---------- Peças ---------- */
