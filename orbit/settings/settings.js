@@ -126,7 +126,7 @@ function renderOpts(boxId, opts) {
     const row = document.createElement('div');
     row.className = 'opt';
     if (o.kind === 'colors') {
-      const c = cfg.island, presets = { 'Padrão': ['#2f7bff', '#9b5cff', '#ff6fb5'], Ciano: ['#00e5ff', '#2f7bff', '#7cf7ff'], 'Âmbar': ['#ffb020', '#ff5a36', '#ffe08a'], Verde: ['#2bff9a', '#00b3ff', '#c6ff6b'] };
+      const c = cfg.island, presets = { 'Padrão': ['#2f7bff', '#9b5cff', '#ff6fb5'], Ciano: ['#00e5ff', '#2f7bff', '#7cf7ff'], Brasa: ['#ff6a00', '#ff2d55', '#ff9a3c'], Verde: ['#2bff9a', '#00b3ff', '#c6ff6b'] };
       const on = (m) => (c.orbMode === m ? 'background:var(--accent);color:#000' : '');
       row.innerHTML = `<div><b>${o.title}</b><span>${o.desc}</span></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
         <div class="presets" style="margin:0"><button data-m="grad" style="${on('grad')}">Gradiente</button><button data-m="solid" style="${on('solid')}">Sólida</button></div>
@@ -160,6 +160,7 @@ function renderOpts(boxId, opts) {
 function render() {
   const c = cfg.island, rs = document.documentElement.style;
   rs.setProperty('--orb1', c.orbC1);
+  rs.setProperty('--accent', c.orbC1); // chaves, abas e destaques na cor da assistente
   rs.setProperty('--orb-ring', c.orbMode === 'solid' ? c.orbC1 : `conic-gradient(${c.orbC1}, ${c.orbC2}, ${c.orbC3}, ${c.orbC1})`);
   renderFeatures(); renderOpts('island-opts', ISLAND); renderOpts('friday-opts', ASSIST_OPTS); renderPerms(); }
 

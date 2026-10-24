@@ -27,7 +27,12 @@ body { display: flex; flex-direction: column; height: 100dvh; background: transp
    e um clarão das cores dela se espalha pela tela. Desenhado em canvas por app.js (orbBg). */
 #orb-bg { position: fixed; left: 50%; top: 46%; width: min(118vw, 118vh); aspect-ratio: 1; z-index: -1; pointer-events: none;
   transform: translate(-50%, -50%) scale(calc(1 + var(--lv, 0) * .12)); filter: blur(26px) saturate(150%);
-  opacity: calc(.42 + var(--lv, 0) * .5); transition: opacity .35s ease, transform .35s ease; }
+  opacity: calc(.42 + var(--lv, 0) * .5); transition: opacity .35s ease, transform .35s ease;
+  animation: orb-turn 48s linear infinite, orb-breathe 7s ease-in-out infinite; }
+/* Vivo mesmo parado: gira devagar e respira (rotate/scale separados do transform, que segue a voz) */
+@keyframes orb-turn { to { rotate: 360deg; } }
+@keyframes orb-breathe { 50% { scale: 1.06; } }
+@media (prefers-reduced-motion: reduce) { #orb-bg { animation: none; } }
 #orb-flash { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: calc(var(--lv, 0) * .55); transition: opacity .25s ease;
   background: radial-gradient(70% 55% at 50% 46%, color-mix(in srgb, var(--accent2) 45%, transparent), transparent 70%); mix-blend-mode: screen; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
@@ -191,3 +196,13 @@ a.btn, a.item { color: var(--fg); text-decoration: none; -webkit-tap-highlight-c
   color: var(--fg); text-decoration: none; font-size: 13.5px; font-weight: 600;
   background: color-mix(in srgb, var(--accent) 16%, rgba(255, 255, 255, .04)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
 .link-pill .ico { color: var(--accent); }
+
+/* ---------- Ajustes ---------- */
+.preset { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--dim); flex: 1; }
+.preset i { width: 44px; height: 44px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .15); }
+.preset.on { color: var(--fg); } .preset.on i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px #fff; }
+.swatch { position: relative; width: 40px; height: 40px; flex: none; }
+.swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
+.swatch span { display: block; width: 100%; height: 100%; border-radius: 12px; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .2); pointer-events: none; }
+.btn:disabled { pointer-events: none; }
+.view.in-main .back[data-back] { display: none; }

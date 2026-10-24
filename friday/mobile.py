@@ -18,6 +18,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import subprocess
 import tempfile
@@ -132,6 +133,30 @@ def icon_png(size: int) -> bytes:
     Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).save(buf, "PNG")
     _icons[key] = buf.getvalue()
     return _icons[key]
+
+
+HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+async def colors_post(request: web.Request) -> web.Response:
+    """{"mode": "grad"|"solid", "c1", "c2", "c3"}: cores da assistente. O Orbit do PC recebe pelo canal de eventos
+    e salva na configuração dele; aqui também gravamos no arquivo, para valer mesmo com a ilha fechada."""
+    b = await request.json()
+    cur = colors()
+    new = {"orbMode": "solid" if b.get("mode") == "solid" else "grad"}
+    for k in ("c1", "c2", "c3"):
+        new["orbC" + k[1]] = b[k] if HEX.match(str(b.get(k, ""))) else cur[k]
+    orbit.publish("orbit_config", config={"island": new})
+    for name in ("orbit", "Orbit Beta"):
+        p = Path(os.getenv("APPDATA", "")) / name / "config.json"
+        try:
+            cfg = json.loads(p.read_text(encoding="utf-8"))
+            cfg.setdefault("island", {}).update(new)
+            p.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        except Exception:
+            continue
+    _icons.clear()
+    return web.json_response({"ok": True, "cores": colors()})
 
 
 # ---------- Presença no PC (para decidir se o aviso vai pro celular) ----------
@@ -250,8 +275,20 @@ async def pair(request: web.Request) -> web.Response:
     return resp
 
 
+async def unpair(request: web.Request) -> web.Response:
+    """Tira este aparelho da lista de pareados (e as assinaturas de push dele)."""
+    s = _load()
+    s["devices"].pop(_hash(request.cookies.get(COOKIE, "")), None)
+    _save(s)
+    resp = web.json_response({"ok": True})
+    resp.del_cookie(COOKIE)
+    return resp
+
+
 async def me(request: web.Request) -> web.Response:
+    from . import google_auth
     return web.json_response({"ok": True, "assistente": assistente.publico(), "cores": colors(), "push": bool(_load()["subs"]),
+                              "google": google_auth.connected(),
                               "always_push": _load().get("always_push", False), "state": orbit._state})
 
 
@@ -570,6 +607,8 @@ async def start() -> None:
     r.add_post("/api/voice", voice_in)
     r.add_get("/api/feed", feed_get)
     r.add_post("/api/prefs", prefs_post)
+    r.add_post("/api/colors", colors_post)
+    r.add_post("/api/unpair", unpair)
     r.add_get("/api/push/key", push_key)
     r.add_post("/api/push/subscribe", push_subscribe)
     r.add_post("/api/push/test", push_test)

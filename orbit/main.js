@@ -237,6 +237,10 @@ function connect() {
               if (tray) tray.setToolTip(`Orbit — ${assist.nome}`);
             }
             if (ev.type === 'theme') saveConfig({ island: { theme: ev.mode } }); // a IA trocou o tema do Orbit
+            if (ev.type === 'orbit_config' && ev.config?.island) { // cores escolhidas no app do celular
+              const i = ev.config.island, ok = (v) => /^#[0-9a-f]{6}$/i.test(v);
+              saveConfig({ island: { orbMode: i.orbMode === 'solid' ? 'solid' : 'grad', ...Object.fromEntries(['orbC1', 'orbC2', 'orbC3'].filter((k) => ok(i[k])).map((k) => [k, i[k]])) } });
+            }
             if (ev.type === 'gamemode') status.game = ev.on;
             // Modo servidor: ilha leve enquanto ele estiver ligado; ao desligar, volta como você tinha deixado.
             if (ev.type === 'server') {

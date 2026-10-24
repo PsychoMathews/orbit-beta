@@ -26,7 +26,14 @@ function toast(text, ms = 2600) {
 }
 
 // ---------- Abas ----------
-const MAIN = ['sexta', 'agenda', 'lembretes', 'midia', 'timer', 'mais'];
+const TABS_DEFAULT = { main: ['sexta', 'agenda', 'lembretes', 'midia', 'timer'], more: ['avisos', 'ia', 'arquivos', 'notas'] };
+function tabOrder() {
+  const t = store.get('orbit.tabs', TABS_DEFAULT), all = [...TABS_DEFAULT.main, ...TABS_DEFAULT.more];
+  const main = (t.main || []).filter((x) => all.includes(x)).slice(0, 5), more = all.filter((x) => !main.includes(x));
+  const savedMore = (t.more || []).filter((x) => more.includes(x));
+  return { main: main.length ? main : TABS_DEFAULT.main, more: [...savedMore, ...more.filter((x) => !savedMore.includes(x))] };
+}
+let MAIN = [...tabOrder().main, 'mais'];
 const V = {};
 let current = null;
 
@@ -44,6 +51,7 @@ function go(id) {
   v.el.classList.add('on'); current = id;
   $('#title').textContent = id === 'sexta' ? nome() : v.title;
   const tab = MAIN.includes(id) ? id : 'mais';
+  for (const x of Object.values(V)) x.el?.classList.toggle('in-main', MAIN.includes(x.id)); // aba da barra não mostra "‹ Mais"
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.id === tab));
   history.replaceState(null, '', '#' + id);
   rise(v.el);
@@ -332,7 +340,7 @@ view({
   id: 'timer', title: 'Timer', icon: 'timer',
   timers: [], pomo: null,
   mount(el) {
-    el.innerHTML = `
+    el.innerHTML = back() + `
       <div class="card pomo" style="margin-bottom:12px"><div id="pm-main"></div>
         <div class="row" id="pm-dots" style="gap:6px;margin-top:14px"></div></div>
       <div data-body></div>
@@ -343,6 +351,7 @@ view({
         <input class="input" id="tm-label" placeholder="Nome (opcional), ex.: Café" style="width:100%;margin-bottom:12px">
         <button class="btn primary" id="tm-go" style="width:100%">Iniciar</button>
       </div>`;
+    wireBack(el);
     this.wheels = [...el.querySelectorAll('.wheel')];
     this.set(0, 10, 0);
     el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => { const m = +b.dataset.m; this.set(Math.floor(m / 60), m % 60, 0); });
@@ -646,21 +655,82 @@ view({
 
 // ---------- Ajustes (notificações e instalação) ----------
 const b64 = (s) => { const p = '='.repeat((4 - (s.length % 4)) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, (c) => c.charCodeAt(0)); };
+const PRESETS = { 'Padrão': ['#2f7bff', '#9b5cff', '#ff6fb5'], Ciano: ['#00e5ff', '#2f7bff', '#7cf7ff'], Brasa: ['#ff6a00', '#ff2d55', '#ff9a3c'], Verde: ['#2bff9a', '#00b3ff', '#c6ff6b'] };
 view({
   id: 'ajustes', title: 'Ajustes', icon: 'gear',
   mount(el) { el.innerHTML = back() + '<div data-body></div>'; wireBack(el); },
   async show() {
-    const body = $('[data-body]', this.el);
-    const perm = window.Notification ? Notification.permission : 'indisponível';
-    body.innerHTML = (!standalone ? `<div class="card" style="margin-bottom:12px"><b>Instale o app</b><div class="dim" style="margin-top:6px">No Safari, toque em Compartilhar ${icon('up', 14).replace('class="ico"', 'class="ico" style="display:inline;vertical-align:-2px"')} e depois em <b>Adicionar à Tela de Início</b>. O iPhone só entrega notificações para o app instalado.</div></div>` : '')
+    try { me = await api('/me'); } catch {}
+    const body = $('[data-body]', this.el), c = me.cores || {}, perm = window.Notification ? Notification.permission : 'indisponível';
+    let mic = 'pedido no primeiro uso';
+    try { const q = await navigator.permissions?.query({ name: 'microphone' }); if (q) mic = { granted: 'liberado', denied: 'bloqueado', prompt: 'pedido no primeiro uso' }[q.state] || mic; } catch {}
+    const order = tabOrder();
+    const tabRow = (id, where, i, n) => `<div class="item" style="padding:10px 12px;gap:10px"><span class="well" style="width:36px;height:36px">${icon(V[id].icon, 17)}</span>
+      <span class="grow" style="font-weight:600">${id === 'sexta' ? esc(nome()) : V[id].title}</span>
+      <button class="btn round" style="width:36px;height:36px" data-up="${where}:${i}" ${i === 0 ? 'disabled' : ''}>${icon('up', 16)}</button>
+      <button class="btn round" style="width:36px;height:36px" data-dn="${where}:${i}" ${i === n - 1 ? 'disabled' : ''}>${icon('down', 16)}</button>
+      <button class="chip pick" data-mv="${where}:${i}">${where === 'main' ? 'Mais' : 'Barra'}</button></div>`;
+    const perms = [
+      ['bell', 'Notificações', perm === 'granted' ? 'liberadas' : perm === 'denied' ? 'bloqueadas' : 'desligadas', 'Avisos da assistente quando você está longe do PC: lembretes, timers, reuniões, e-mails importantes.'],
+      ['mic', 'Microfone', mic, 'Só enquanto você segura a conversa por voz. O áudio vai para o seu PC, vira texto lá e é apagado.'],
+      ['calendar', 'Conta Google', me.google ? 'conectada' : 'desconectada', 'Agenda (ver e criar eventos) e Gmail (ler e, com sua confirmação, enviar). O acesso fica no seu PC.'],
+      ['folder', 'Arquivos', 'só o que você escolhe', 'O app só envia o arquivo que você escolher e só mostra a pasta Downloads do PC.'],
+      ['spark', 'Seu PC', 'pareado', 'Este iPhone conversa com a assistente, vê o que toca no PC, seus timers, notas e lembretes, pela rede privada do Tailscale.'],
+    ];
+    body.innerHTML = (!standalone ? `<div class="card" style="margin-bottom:12px"><b>Instale o app</b><div class="dim" style="margin-top:6px">No Safari, toque em Compartilhar e depois em <b>Adicionar à Tela de Início</b>. O iPhone só entrega notificações para o app instalado.</div></div>` : '')
+      + `<div class="sec">Cores ${me.assistente?.artigo === 'o' ? 'do' : 'da'} ${esc(nome())}</div><div class="card">
+          <div class="row" style="gap:14px;margin-bottom:14px"><span class="ring" style="width:44px;height:44px;animation-duration:6s"></span>
+            <div class="row" style="flex:1;justify-content:flex-end;gap:6px"><button class="chip pick ${c.mode !== 'solid' ? 'on' : ''}" data-mode="grad">Gradiente</button><button class="chip pick ${c.mode === 'solid' ? 'on' : ''}" data-mode="solid">Sólida</button></div></div>
+          <div class="label" style="margin-bottom:10px">Prontas</div>
+          <div class="row" style="gap:12px;margin-bottom:16px">${Object.entries(PRESETS).map(([n, p]) => `<button class="preset ${[c.c1, c.c2, c.c3].join() === p.join() ? 'on' : ''}" data-pre="${n}"><i style="background:linear-gradient(135deg,${p})"></i><span>${n}</span></button>`).join('')}</div>
+          <div class="label" style="margin-bottom:10px">Personalizada</div>
+          <div class="row" style="gap:10px">${['c1', 'c2', 'c3'].map((k, i) => `<label class="swatch" ${c.mode === 'solid' && i ? 'hidden' : ''}><input type="color" data-c="${k}" value="${c[k] || '#ffffff'}"><span style="background:${c[k]}"></span></label>`).join('')}
+            <span class="faint" style="flex:1">${c.mode === 'solid' ? 'Uma cor só.' : 'Três cores do gradiente.'} Muda aqui e na ilha do PC.</span></div>
+        </div>`
+      + `<div class="sec">Abas</div><div class="label" style="margin:0 6px 8px">Na barra de baixo (até 5)</div><div class="list">${order.main.map((id, i) => tabRow(id, 'main', i, order.main.length)).join('')}</div>
+        <div class="label" style="margin:16px 6px 8px">No Mais</div><div class="list">${order.more.map((id, i) => tabRow(id, 'more', i, order.more.length)).join('')}</div>`
       + `<div class="sec">Notificações</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
         <div class="row"><span style="flex:1">Avisos no iPhone</span><span class="chip">${perm === 'granted' && me.push ? 'ligados' : perm === 'denied' ? 'bloqueados nos Ajustes' : 'desligados'}</span></div>
         <div class="row"><button class="btn primary" id="push-on" ${!standalone ? 'disabled' : ''}>Ativar avisos</button><button class="btn" id="push-test">Testar</button></div>
         <div class="row"><div style="flex:1"><div>Avisar mesmo com o PC em uso</div><div class="faint">Desligado: só manda pro celular quando você está longe do PC.</div></div>
-          <button class="switch ${me.always_push ? 'on' : ''}" id="always"></button></div></div>`;
+          <button class="switch ${me.always_push ? 'on' : ''}" id="always"></button></div></div>`
+      + `<div class="sec">Permissões</div><div class="list">${perms.map(([ic, t, st, d]) => `<div class="item" style="align-items:flex-start"><span class="well">${icon(ic, 18)}</span>
+          <div class="grow"><div class="row"><b style="flex:1">${t}</b><span class="chip">${st}</span></div><div class="faint" style="margin-top:4px;white-space:normal">${d}</div></div></div>`).join('')}</div>
+        <div class="row" style="margin-top:12px;gap:8px"><a class="btn" style="flex:1" href="https://psychomathews.github.io/orbit/privacidade.html" target="_blank" rel="noopener">Privacidade</a>
+          <button class="btn danger" style="flex:1" id="unpair">Desconectar este iPhone</button></div>`;
+
+    // cores
+    const setColors = async (mode, cs) => {
+      const r = await post('/colors', { mode, c1: cs[0], c2: cs[1], c3: cs[2] }).catch(() => null);
+      if (r?.cores) { me.cores = r.cores; applyColors(r.cores); this.show(); } else toast('Não consegui salvar as cores.');
+    };
+    body.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => setColors(b.dataset.mode, [c.c1, c.c2, c.c3]));
+    body.querySelectorAll('[data-pre]').forEach((b) => b.onclick = () => setColors(c.mode || 'grad', PRESETS[b.dataset.pre]));
+    body.querySelectorAll('[data-c]').forEach((inp) => inp.onchange = () => { const cs = [c.c1, c.c2, c.c3]; cs[+inp.dataset.c[1] - 1] = inp.value; setColors(c.mode || 'grad', cs); });
+    // abas
+    const save = (o) => { store.set('orbit.tabs', o); const t = tabOrder(); MAIN = [...t.main, 'mais']; MORE = [...t.more, 'ajustes']; buildTabs(); go('ajustes'); this.show(); };
+    body.onclick = (e) => {
+      const b = e.target.closest('[data-up],[data-dn],[data-mv]'); if (!b) return;
+      const [where, i] = (b.dataset.up || b.dataset.dn || b.dataset.mv).split(':'), o = tabOrder(), list = o[where], k = +i;
+      if (b.dataset.up) [list[k - 1], list[k]] = [list[k], list[k - 1]];
+      else if (b.dataset.dn) [list[k + 1], list[k]] = [list[k], list[k + 1]];
+      else {
+        const other = where === 'main' ? 'more' : 'main';
+        if (where === 'main' && o.main.length === 1) return toast('A barra precisa de pelo menos uma aba.');
+        if (other === 'main' && o.main.length >= 5) return toast('A barra já tem 5 abas. Mande uma para o Mais antes.');
+        o[other].push(list.splice(k, 1)[0]);
+      }
+      save(o);
+    };
+    // notificações e aparelho
     $('#push-on').onclick = () => enablePush();
     $('#push-test').onclick = async () => { const r = await post('/push/test').catch(() => null); toast(r?.ok ? 'Mandei um aviso de teste.' : 'Nenhum aparelho com avisos ligados.'); };
     $('#always').onclick = async () => { me.always_push = !me.always_push; await post('/prefs', { always_push: me.always_push }).catch(() => {}); this.show(); };
+    $('#unpair').onclick = async (e) => {
+      const btn = e.currentTarget;
+      if (!btn.dataset.armed) { btn.dataset.armed = '1'; btn.textContent = 'Toque de novo para desconectar'; setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Desconectar este iPhone'; }, 3000); return; }
+      await post('/unpair').catch(() => {}); location.replace('/');
+    };
   },
 });
 
@@ -678,12 +748,12 @@ async function enablePush() {
 }
 
 // ---------- Mais ----------
-const MORE = ['avisos', 'ia', 'arquivos', 'notas', 'ajustes'];
+let MORE = [...tabOrder().more, 'ajustes'];
 view({
   id: 'mais', title: 'Mais', icon: 'plus',
-  mount(el) {
-    el.innerHTML = `<div class="grid">${MORE.map((id) => `<button class="tile" data-go="${id}">${icon(V[id].icon, 26)}<span>${V[id].title}</span><span class="chip" data-badge="${id}" hidden></span></button>`).join('')}</div>`;
-    el.onclick = (e) => { const b = e.target.closest('[data-go]'); if (b) go(b.dataset.go); };
+  mount(el) { el.onclick = (e) => { const b = e.target.closest('[data-go]'); if (b) go(b.dataset.go); }; },
+  show() {
+    this.el.innerHTML = `<div class="grid">${MORE.map((id) => `<button class="tile" data-go="${id}">${icon(V[id].icon, 26)}<span>${V[id].title}</span><span class="chip" data-badge="${id}" hidden></span></button>`).join('')}</div>`;
     badge();
   },
 });
@@ -704,10 +774,10 @@ const orbBg = {
   frame(now) {
     requestAnimationFrame((t) => this.frame(t));
     const active = island.st !== 'idle';
-    if (!active && now - this.last < 66) return; // parado: ~15 quadros/s bastam (economiza bateria)
+    if (!active && now - this.last < 40) return; // parado: ~25 quadros/s bastam (economiza bateria)
     const dt = Math.min(0.1, (now - (this.last || now)) / 1000); this.last = now;
     const lv = active ? +(getComputedStyle(document.documentElement).getPropertyValue('--lv') || 0) : 0;
-    this.t += dt * (active ? 1.6 + lv * 3 : 0.35);
+    this.t += dt * (active ? 1.6 + lv * 3 : 0.9); // parado também ondula, só mais calmo
     const cv = $('#orb-bg'), S = 256;
     if (cv.width !== S) { cv.width = cv.height = S; }
     const g = cv.getContext('2d'), c = S / 2, R = S * 0.3, cs = getComputedStyle(document.documentElement);
@@ -750,6 +820,7 @@ function live() {
   es.onmessage = (e) => {
     let ev; try { ev = JSON.parse(e.data); } catch { return; }
     if (ev.type === 'notify' && !['mute', 'error'].includes(ev.kind)) { toast(ev.text, 5000); badge(); if (current === 'avisos') V.avisos.show(); }
+    if (ev.type === 'orbit_config' && ev.config?.island) { const i = ev.config.island; me.cores = { mode: i.orbMode, c1: i.orbC1, c2: i.orbC2, c3: i.orbC3 }; applyColors(me.cores); }
     if (ev.type === 'timers' && V.timer.el) { V.timer.timers = ev.timers; V.timer.render(); if (current === 'timer') api('/timers').then((r) => V.timer.apply(r)).catch(() => {}); }
     // A assistente ouvindo/pensando/falando no PC aparece na pílula do celular (sem som).
     if (ev.type === 'state' && (island.st === 'idle' || island.pc)) {
