@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 import re
 import time
 from pathlib import Path
@@ -86,6 +87,33 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("Não consegui entender o áudio.")
         return
     await _respond(update, context, text, reply_with_voice=True, heard=text)
+
+
+async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Foto, print ou arquivo mandado no Telegram: salva no PC (Downloads\\Do celular) e, com legenda, atende o pedido."""
+    if not _allowed(update):
+        return
+    msg = update.message
+    if msg.photo:
+        tg, name = msg.photo[-1], f"Foto {datetime.now():%Y-%m-%d %H%M%S}.jpg"  # a maior resolução que o Telegram guarda
+    else:
+        tg = msg.document or msg.video
+        name = getattr(tg, "file_name", None) or f"Arquivo {datetime.now():%Y-%m-%d %H%M%S}"
+    if getattr(tg, "file_size", 0) and tg.file_size > 20 * 1024 * 1024:
+        await msg.reply_text("O Telegram só deixa bots baixarem arquivos de até 20 MB. Mande pelo app Orbit, na aba Arquivos.")
+        return
+    await context.bot.send_chat_action(update.effective_chat.id, ChatAction.UPLOAD_DOCUMENT)
+    try:
+        data = bytes(await (await tg.get_file()).download_as_bytearray())
+        dest = mobile.save_upload(name, data)
+    except Exception as e:
+        log.exception("Arquivo do Telegram não salvou")
+        await msg.reply_text(f"Não consegui salvar o arquivo no PC: {e}")
+        return
+    if msg.caption:
+        await _respond(update, context, f"{msg.caption}\n\n(Arquivo que ele mandou agora, já salvo no PC em: {dest})", reply_with_voice=False)
+    else:
+        await msg.reply_text(f"Salvei no PC: Downloads\\Do celular\\{dest.name}")
 
 
 async def _respond(update, context, text, reply_with_voice, heard=None, heavy=False):
@@ -306,6 +334,7 @@ def main() -> None:
     app.add_handler(CommandHandler("pesado", heavy))
     app.add_handler(CallbackQueryHandler(handle_confirmation))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL | filters.VIDEO, handle_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     log.info(assistente.NOME + " no ar (modelo %s, voz %s, ouvido %s)", config.OLLAMA_MODEL, config.VOICE_ENGINE, config.STT_ENGINE)
     app.run_polling()

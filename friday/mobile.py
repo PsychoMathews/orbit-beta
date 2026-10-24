@@ -361,11 +361,15 @@ async def siri(request: web.Request) -> web.Response:
     if not text:
         return web.json_response({"fala": "Não ouvi nada. Pode repetir?", "abrir": ""})
     _action["url"] = ""
+    # Contexto vai no fim (texto começando com "[" o cérebro manda para o modelo local, que não serve aqui).
+    ask = f"{text}\n\n(Pedido por voz pelo atalho da Siri no celular; ele pode estar dirigindo. Responda curto, para ser falado.)"
     try:
-        reply, _ = await asyncio.wait_for(brain.ask(config.OWNER_ID, "[pelo celular, por voz: ele pode estar dirigindo] " + text,
-                                                     spoken=True, channel="telegram"), 50)
+        reply, _ = await asyncio.wait_for(brain.ask(config.OWNER_ID, ask, spoken=True, channel="telegram"), 50)
     except asyncio.TimeoutError:
         reply = "Demorei demais pra pensar. Tenta de novo?"
+    except Exception:
+        log.exception("Atalho da Siri: erro ao responder")
+        reply = "Tive um problema pra responder agora. Tenta de novo daqui a pouco."
     url, _action["url"] = _action["url"], ""
     return web.json_response({"fala": speech.for_speech(reply or "Feito."), "abrir": url})
 
@@ -606,6 +610,18 @@ async def file_get(request: web.Request) -> web.Response:
     if path.parent != folder.resolve() or not path.is_file():
         return web.Response(status=404)
     return web.FileResponse(path, headers={"Content-Disposition": f'attachment; filename="{path.name}"'})
+
+
+def save_upload(name: str, data: bytes) -> Path:
+    """Guarda um arquivo vindo do celular (app ou Telegram) em Downloads\\Do celular, sem sobrescrever, e avisa na ilha."""
+    UPLOADS.mkdir(parents=True, exist_ok=True)
+    dest = UPLOADS / (Path(name).name.replace(":", "_") or "arquivo")
+    stem, n = dest.stem, 1
+    while dest.exists():
+        dest, n = UPLOADS / f"{stem} ({n}){dest.suffix}", n + 1
+    dest.write_bytes(data)
+    orbit.publish("show", title="Do celular", text=dest.name + " em Downloads\\Do celular")
+    return dest
 
 
 async def upload(request: web.Request) -> web.Response:
