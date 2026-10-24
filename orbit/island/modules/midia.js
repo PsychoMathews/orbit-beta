@@ -5,7 +5,7 @@ const brand = (app = '') => {
   if (a.includes('spotify')) return v('#1ed760', '#fff', '#000');
   if (/youtube|chrome|edge|opera|firefox|brave/.test(a)) return v('#ff3040', '#fff', '#000');
   if (a.includes('vlc')) return v('#ff8800', '#fff', '#000');
-  return v('#1ed760', '#fff', '#000');
+  return v('#c9ced8', '#fff', '#000'); // player desconhecido (ex.: Maestri): neutro, nunca o verde do Spotify
 };
 // Música e vídeo: tudo que toca no Windows (Spotify, YouTube no navegador...), um cartão com controles por player.
 Orbit.register({
@@ -243,7 +243,7 @@ Orbit.register({
     // Sem escolha sua, mostra o que está tocando.
     if (!list.some((s) => s.id === this.sel)) this.sel = null;
     const cur = list.find((s) => s.id === this.sel) || list.find((s) => s.playing) || list[0];
-    const tabs = list.length > 1 ? `<div class="row ptabs" style="gap:6px;margin-bottom:8px">${list.slice(0, 5).map((s) => `
+    const tabs = list.length > 1 ? `<div class="row ptabs" style="gap:6px;margin-bottom:8px">${list.map((s) => `
       <button class="ptab ${s.id === cur.id ? 'on' : ''}" data-pick="${esc(s.id)}" style="${brand(s.app)}">
         <i style="background:var(--tint)"></i>${esc(s.app || 'Player')}${s.playing ? ' <span class="eq mini"><i></i><i></i><i></i></span>' : ''}</button>`).join('')}</div>` : '';
     this.cur = cur;
@@ -263,7 +263,8 @@ Orbit.register({
     this.renderProgress();
   },
   // Letra só em player de música (Spotify, Apple Music, VLC...); vídeo no navegador não tem.
-  hasLyrics(s) { return !/youtube|chrome|edge|opera|firefox|brave|navegador/i.test(s.app || ''); },
+  // Letra só onde é música: Spotify e players de música. Vídeo em navegador ou em outro app não tem.
+  hasLyrics(s) { return /spotify|música|music|apple|deezer|tidal|amazon|vlc|foobar|winamp|aimp|musicbee/i.test(s.app || ''); },
   // ---- fila do Spotify (pela conta conectada nas Configurações) ----
   async loadQueue() {
     const r = await api.get('/orbit/spotify?queue=1');

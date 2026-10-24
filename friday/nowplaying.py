@@ -44,7 +44,12 @@ def _app_name(aumid: str) -> str:
                       ("firefox", "Firefox"), ("vlc", "VLC"), ("zunemusic", "Media Player"), ("music", "Música")):
         if key in a:
             return name
-    return aumid.split("!")[0].split("\\")[-1].removesuffix(".exe")
+    base = aumid.split("!")[0].split("\\")[-1].removesuffix(".exe")
+    # Identificador em formato de domínio ("com.maestri.windows"): o nome do app é o segundo pedaço.
+    parts = base.split(".")
+    if len(parts) >= 3 and parts[0].lower() in ("com", "org", "net", "io", "app", "br"):
+        return parts[1].capitalize()
+    return base
 
 
 async def _art(props, key: str) -> str | None:

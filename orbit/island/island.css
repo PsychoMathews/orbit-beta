@@ -266,3 +266,8 @@ html.cpanel .tab.on .lbl { display: none; }
 /* Notas: abas de notas com rolagem lateral, sem encolher */
 #nn-tabs .tab { flex: none; }
 #nn-tabs::-webkit-scrollbar { display: none; }
+
+/* Player: uma aba por player, quantas houver, rolando para o lado */
+.ptabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.ptabs::-webkit-scrollbar { display: none; }
+.ptabs .ptab { flex: none; }
