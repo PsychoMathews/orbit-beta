@@ -131,6 +131,21 @@ def _people() -> dict:
     return out
 
 
+def _person_address(name: str) -> str:
+    """Endereço de alguém na nota Pessoas ("- **Nome**: ... Endereço: Rua X, 10, Bairro")."""
+    from . import vault
+    want = name.strip().casefold()
+    try:
+        for line in (vault.VAULT / "Pessoas.md").read_text(encoding="utf-8").splitlines():
+            m = re.match(r"\s*-\s*\*\*(.+?)\*\*", line)
+            addr = re.search(r"endere[cç]o\s*:\s*([^;|]+?)(?:\s+(?:tel|telefone|celular|anivers[aá]rio)\b|$)", line, re.I)
+            if m and addr and (m.group(1).casefold() == want or m.group(1).casefold().startswith(want)):
+                return addr.group(1).strip(" .")
+    except Exception:
+        log.debug("Pessoas sem endereço", exc_info=True)
+    return ""
+
+
 def _person(name: str) -> tuple[str, str] | None:
     want = name.strip().casefold()
     people = _people()
@@ -170,6 +185,19 @@ def quick(text: str) -> tuple[str, str] | None:
         return f"Não tenho o número de {m.group('who')}. Adicione na nota Pessoas do cofre, ou peça direto à Siri.", ""
     # rota
     m = re.search(r"(?:me\s+leva|me\s+levar|leva(?:-me)?|rota|navega(?:r)?|vamos|bora)\s+(?:pra|para|at[eé]|ao|à|pro|no|na|a)\s+(?:o\s+|a\s+)?(?P<d>.+)$", t, re.I)
+    # Casa, trabalho e casa de alguém: só endereços guardados por ele (lugares salvos ou nota Pessoas).
+    # Nunca pesquisa pessoa na internet ("casa da Vitória" já virou uma loja chamada Vitória).
+    if m:
+        d = m.group("d").strip()
+        who = re.match(r"^(?:minha\s+)?casa(?:\s+d[aoe]s?\s+(?P<who>.+))?$|^(?:meu\s+)?trabalho$", d, re.I)
+        if who:
+            from . import web
+            addr = web._place(d)
+            if addr == d and who.group("who"):
+                addr = _person_address(who.group("who")) or d
+            if addr == d:
+                return f"Não tenho o endereço {('de ' + who.group('who')) if who.group('who') else 'salvo'}. Coloque na nota Pessoas como Endereço.", ""
+            return f"Rota para {d} no Waze.", "https://waze.com/ul?" + urllib.parse.urlencode({"q": addr, "navigate": "yes"})
     # Só endereço vai direto; lugar pelo nome ("restaurante tal em Pinheiros") segue para o Claude achar o endereço exato.
     if m and re.search(r"\d|\b(rua|r\.|avenida|av\.?|alameda|al\.|estrada|rodovia|pra[cç]a|travessa|largo)\b", m.group("d"), re.I):
         d = m.group("d")
@@ -502,7 +530,8 @@ async def siri(request: web.Request) -> web.Response:
            "'Abre X' é no celular (open_phone_app); rota é open_waze; música é spotify_play no celular. "
            "Rota para um lugar pelo nome (restaurante, loja, academia): pesquise na internet o endereço exato (o ditado "
            "pode ter escrito o nome errado, ex. 'Low Barbecue' = 'Low BBQ'), chame open_waze com rua, número, bairro e cidade, "
-           "e diga o nome e a rua na resposta. Casa e trabalho: os endereços salvos da ferramenta traffic. "
+           "e diga o nome e a rua na resposta. Casa, trabalho e casa de alguém: só endereços salvos (ferramenta traffic "
+           "ou nota Pessoas); NUNCA pesquise uma pessoa na internet: sem endereço salvo, diga que não tem e não abra nada. "
            "Não abra nada no PC. Responda curto, para ser falado.)")
     try:
         reply, _ = await asyncio.wait_for(brain.ask(config.OWNER_ID, ask, spoken=True, channel="telegram"), 50)
