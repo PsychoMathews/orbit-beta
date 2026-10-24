@@ -241,11 +241,15 @@ def play(query: str, where: str = "celular", kind: str = "") -> tuple[str, str]:
     if kind == "default":  # "toca minhas músicas": a playlist padrão ou as Músicas Curtidas
         q, kind = default_playlist(), "playlist" if default_playlist() else "liked"
     if kind == "liked":
-        try:
-            tr = _api("GET", "/me/tracks", {"limit": 50}).get("items", [])
-            uris = [x["track"]["uri"] for x in tr if x.get("track")]
+        uris = []
+        try:  # as 200 curtidas mais recentes, embaralhadas (a API não toca "Músicas Curtidas" como playlist)
+            for off in range(0, 200, 50):
+                tr = _api("GET", "/me/tracks", {"limit": 50, "offset": off}).get("items", [])
+                uris += [x["track"]["uri"] for x in tr if x.get("track")]
+                if len(tr) < 50:
+                    break
         except urllib.error.HTTPError:
-            uris = []
+            pass
         if not uris:
             return "Não consegui ler suas Músicas Curtidas. Reconecte o Spotify nas Configurações do Orbit.", ""
         import random
