@@ -26,7 +26,7 @@ function toast(text, ms = 2600) {
 }
 
 // ---------- Abas ----------
-const MAIN = ['sexta', 'agenda', 'lembretes', 'midia', 'mais'];
+const MAIN = ['sexta', 'agenda', 'lembretes', 'midia', 'timer', 'mais'];
 const V = {};
 let current = null;
 
@@ -326,7 +326,7 @@ view({
   id: 'timer', title: 'Timer', icon: 'timer',
   timers: [], pomo: null,
   mount(el) {
-    el.innerHTML = back() + `
+    el.innerHTML = `
       <div class="card pomo" style="margin-bottom:12px"><div id="pm-main"></div>
         <div class="row" id="pm-dots" style="gap:6px;margin-top:14px"></div></div>
       <div data-body></div>
@@ -337,7 +337,6 @@ view({
         <input class="input" id="tm-label" placeholder="Nome (opcional), ex.: Café" style="width:100%;margin-bottom:12px">
         <button class="btn primary" id="tm-go" style="width:100%">Iniciar</button>
       </div>`;
-    wireBack(el);
     this.wheels = [...el.querySelectorAll('.wheel')];
     this.set(0, 10, 0);
     el.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => { const m = +b.dataset.m; this.set(Math.floor(m / 60), m % 60, 0); });
@@ -673,7 +672,7 @@ async function enablePush() {
 }
 
 // ---------- Mais ----------
-const MORE = ['avisos', 'timer', 'ia', 'arquivos', 'notas', 'ajustes'];
+const MORE = ['avisos', 'ia', 'arquivos', 'notas', 'ajustes'];
 view({
   id: 'mais', title: 'Mais', icon: 'plus',
   mount(el) {
