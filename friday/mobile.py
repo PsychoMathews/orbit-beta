@@ -518,6 +518,29 @@ async def _answer(text: str, want_voice: bool, brain, config, voice) -> dict:
     return out
 
 
+_later = {"text": "", "url": "", "t": 0.0}  # resposta que ficou pronta depois que a Siri desistiu de esperar
+
+
+def _clean_reply(reply: str) -> str:
+    """Sem rodapé de fontes nem links da pesquisa na fala ("Sources: [BaresSP](...)")."""
+    reply = re.split(r"\n?\s*(?:Sources|Fontes)\s*:", reply or "", maxsplit=1, flags=re.I)[0]
+    return re.sub(r"\[([^\]]+)\]\([^)]*\)?", r"\1", reply).strip()
+
+
+def _deliver_later(task: asyncio.Future) -> None:
+    """Pesquisa que passou do tempo da Siri: guarda a resposta e manda por notificação no iPhone."""
+    try:
+        reply, _ = task.result()
+    except Exception:
+        log.exception("Atalho da Siri: pesquisa em segundo plano falhou")
+        reply = "Não consegui terminar aquela pesquisa. Pode pedir de novo?"
+    reply = _clean_reply(reply)
+    _later.update(text=reply, url=_action["url"], t=time.time())
+    _action["url"] = ""
+    if _loop:
+        _loop.run_in_executor(None, push, assistente.NOME, reply[:300], "siri")
+
+
 async def siri(request: web.Request) -> web.Response:
     """Atalho "Chama Friday": recebe o que você ditou e devolve o que a Siri deve falar e, se houver, o link a abrir
     (Waze com a rota, Spotify). A voz sai do iPhone: o PC não fala nada."""
@@ -530,6 +553,14 @@ async def siri(request: web.Request) -> web.Response:
     if not text:
         return web.json_response({"fala": "Não ouvi nada. Pode repetir?"})
     _action["url"] = ""
+    # "E aí?" / "qual o resultado?": entrega a resposta que ficou pronta depois (até 30 min).
+    if _later["text"] and time.time() - _later["t"] < 1800 and re.fullmatch(
+            r"\W*(e a[ií]|e ent[aã]o|qual (foi )?o resultado|j[aá] (achou|terminou|tem)|terminou|e a[ií],? (achou|encontrou).*|o que voc[eê] achou|resultado)\W*", text, re.I):
+        out = {"fala": speech.for_speech(_later["text"])}
+        if _later["url"]:
+            out["abrir"] = _later["url"]
+        _later["text"] = ""
+        return web.json_response(out)
     hit = await asyncio.to_thread(quick, text)
     if hit:  # comando direto: responde na hora
         log.info("Atalho da Siri (rápido): %s -> %s", text[:80], hit[1][:60])
@@ -552,17 +583,19 @@ async def siri(request: web.Request) -> web.Response:
            "e diga o nome e a rua na resposta. Casa, trabalho e casa de alguém: só endereços salvos (ferramenta traffic "
            "ou nota Pessoas); NUNCA pesquise uma pessoa na internet: sem endereço salvo, diga que não tem e não abra nada. "
            "Não abra nada no PC. Responda curto, para ser falado.)")
+    # A Siri desiste de esperar a rede em ~10 s. Pesquisa leva 12 a 15 s: passou de 8 s, responde "tô pesquisando",
+    # termina no PC e entrega por notificação no iPhone (e no próximo "e aí?" pelo atalho).
+    task = asyncio.ensure_future(brain.ask(config.OWNER_ID, ask, spoken=True, channel="telegram"))
     try:
-        reply, _ = await asyncio.wait_for(brain.ask(config.OWNER_ID, ask, spoken=True, channel="telegram"), 50)
+        reply, _ = await asyncio.wait_for(asyncio.shield(task), 8)
     except asyncio.TimeoutError:
-        reply = "Demorei demais pra pensar. Tenta de novo?"
+        task.add_done_callback(_deliver_later)
+        return web.json_response({"fala": "Tô pesquisando. Te aviso no celular assim que tiver a resposta."})
     except Exception:
         log.exception("Atalho da Siri: erro ao responder")
         reply = "Tive um problema pra responder agora. Tenta de novo daqui a pouco."
     url, _action["url"] = _action["url"], ""
-    # Nada de rodapé de fontes nem links da pesquisa na fala ("Sources: [BaresSP](...)").
-    reply = re.split(r"\n?\s*(?:Sources|Fontes)\s*:", reply or "", maxsplit=1, flags=re.I)[0]
-    reply = re.sub(r"\[([^\]]+)\]\([^)]*\)?", r"\1", reply).strip()
+    reply = _clean_reply(reply)
     out = {"fala": speech.for_speech(reply or "Feito.")}
     if b.get("voz"):  # só se o Atalho pedir ("voz": true): gerar o áudio leva 1 a 3 s
         audio = await _siri_voice(reply or "Feito.", request.headers.get("X-Forwarded-Host") or request.host)
