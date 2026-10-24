@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 import httpx
 
-from . import cloud, config, google_auth, memory, pc, respostas, tools
+from . import assistente, cloud, config, google_auth, memory, pc, respostas, tools
 
 log = logging.getLogger("friday.brain")
 
@@ -432,7 +432,7 @@ def _system_prompt(with_google: bool) -> str:
     prompt = config.PERSONA + (
         f"\n\nAgora são {now:%H:%M} de {DIAS[now.weekday()]}, {now:%d/%m/%Y} (horário de Brasília)."
         f"\nHoje = {now:%Y-%m-%d}. Próximos dias: {week}. Use exatamente essas datas."
-        f"\n\n=== O que você sabe sobre o usuário (cofre do Obsidian: Eu.md e Friday.md) ===\n{memory.profile()}"
+        f"\n\n=== O que você sabe sobre o usuário (cofre do Obsidian: Eu.md e {assistente.NOME}.md) ===\n{memory.profile()}"
     )
     prompt += (
         "\nVocê tem acesso ao PC Windows do usuário pelas ferramentas (status, pastas, arquivos grandes, lixo)."

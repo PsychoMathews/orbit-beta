@@ -7,39 +7,16 @@ import re
 from datetime import datetime
 
 from .tools_common import TZ, fn
-from . import hub, proactive, vault
+from . import assistente, hub, proactive, vault
 
 DIAS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
 ROTINA = vault.VAULT / "Rotina.md"
 ROTINA_TEMPLATE = """# Rotina
 
-> A Friday lê isto quando você pergunta "o que eu tenho hoje?". Escreva o que se repete em cada dia
+> {nome} lê isto quando você pergunta "o que eu tenho hoje?". Escreva o que se repete em cada dia
 > (treino, aulas, hábitos, horários fixos). Linhas embaixo de "Todo dia" valem para todos os dias.
 
-## Todo dia
--
-
-## Segunda
--
-
-## Terça
--
-
-## Quarta
--
-
-## Quinta
--
-
-## Sexta
--
-
-## Sábado
--
-
-## Domingo
--
-"""
+""" + "".join(f"## {d}\n-\n\n" for d in ["Todo dia", *DIAS])
 
 
 def _section(text: str, title: str) -> str:
@@ -50,7 +27,7 @@ def _section(text: str, title: str) -> str:
 
 def _rotina(day: int) -> str:
     if not ROTINA.exists():
-        ROTINA.write_text(ROTINA_TEMPLATE, encoding="utf-8")
+        ROTINA.write_text(ROTINA_TEMPLATE.format(nome=assistente.com_artigo(True)), encoding="utf-8")
     text = ROTINA.read_text(encoding="utf-8")
     parts = [p for p in (_section(text, "Todo dia"), _section(text, DIAS[day])) if p]
     return "\n".join(parts)

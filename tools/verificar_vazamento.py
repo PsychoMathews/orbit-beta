@@ -26,7 +26,8 @@ CHAVES = {"chave Anthropic": r"sk-ant-[A-Za-z0-9_-]{20,}", "chave Google": r"AIz
           "segredo OAuth Google": r"GOCSPX-[A-Za-z0-9_-]{20,}", "token do Telegram": r"\b\d{8,10}:[A-Za-z0-9_-]{35}\b",
           "skill da Alexa": r"amzn1\.ask\.skill\.[0-9a-f-]{20,}"}
 # Nome da assistente original: erro no pacote, aviso no repositório; exemplos/ pode citar (é referência de propósito).
-MARCAS = {"Sexta-feira": r"Sexta[- ]feira|\bSexta\b", "Friday": r"\bF\.?R\.?I\.?D\.?A\.?Y\b"}
+# "Sexta" logo depois de "Quinta" é o dia da semana numa lista de dias, não o nome.
+MARCAS = {"Sexta-feira": r"Sexta[- ]feira|(?<!\"Quinta\", \")\bSexta\b", "Friday": r"\bF\.?R\.?I\.?D\.?A\.?Y\b"}
 TEXTO = {".py", ".js", ".json", ".html", ".css", ".md", ".txt", ".vbs", ".yml", ".yaml", ".example", ".toml", ".nsh"}
 
 
