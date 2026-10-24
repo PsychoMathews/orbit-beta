@@ -203,6 +203,14 @@ def _devices() -> list:
     return (_api("GET", "/me/player/devices") or {}).get("devices", [])
 
 
+def _same(a: str, b: str) -> bool:
+    """Nome igual ao que ele falou, sem ligar para "&"/"and"/"e", acento ou pontuação ("Mumford and Sons")."""
+    import re
+    import unicodedata
+    norm = lambda s: re.sub(r"[^a-z0-9]", "", "".join(c for c in unicodedata.normalize("NFD", re.sub(r"\s(&|and|e)\s", " ", f" {s.casefold()} ")) if unicodedata.category(c) != "Mn"))
+    return norm(a) == norm(b)
+
+
 def default_playlist() -> str:
     """Nome da playlist padrão ("toca minhas músicas"); vazio = Músicas Curtidas."""
     return _read(CONF_FILE).get("default_playlist", "")
@@ -270,7 +278,7 @@ def play(query: str, where: str = "celular", kind: str = "") -> tuple[str, str]:
         pass
     elif lists:
         body, uri, label = {"context_uri": lists[0]["uri"]}, lists[0]["uri"], f"a playlist {lists[0]['name']}"
-    elif artists and artists[0]["name"].casefold() == q.casefold():
+    elif artists and _same(artists[0]["name"], q):
         body, uri, label = {"context_uri": artists[0]["uri"]}, artists[0]["uri"], artists[0]["name"]
     elif tracks:
         t = _track(tracks[0])
