@@ -275,13 +275,16 @@ def _on_event(ev: dict) -> None:
 async def _guard(request: web.Request, handler):
     if not request.path.startswith("/api/") or request.path == "/api/pair":
         return await handler(request)
+    if request.path == "/api/siri" and request.method == "GET":
+        return await handler(request)
     if request.path == "/api/siri":  # Atalho da Siri: senha própria no cabeçalho, sem cookie
         if secrets.compare_digest(request.headers.get("X-Orbit-Token", ""), _load().get("siri_token") or "-"):
             return await handler(request)
         return web.json_response({"fala": "O atalho está com a senha errada. Pegue a senha nova nos Ajustes do Orbit."}, status=401)
     token = request.cookies.get(COOKIE, "")
     if not token or _hash(token) not in _load()["devices"]:
-        return web.json_response({"ok": False, "erro": "não pareado"}, status=401)
+        return web.json_response({"ok": False, "erro": "não pareado",
+                                  "fala": "Endereço errado no atalho. Ele precisa terminar em barra api barra siri."}, status=401)
     if request.method != "GET":
         origin = request.headers.get("Origin", "")
         if origin and origin.split("://", 1)[-1] != request.headers.get("X-Forwarded-Host", request.host):
@@ -365,6 +368,11 @@ async def siri(request: web.Request) -> web.Response:
         reply = "Demorei demais pra pensar. Tenta de novo?"
     url, _action["url"] = _action["url"], ""
     return web.json_response({"fala": speech.for_speech(reply or "Feito."), "abrir": url})
+
+
+async def siri_get(request: web.Request) -> web.Response:
+    """Atalho montado com o método errado: responde em dados (a Siri fala o problema) em vez da página do app."""
+    return web.json_response({"fala": "O atalho está usando o método GET. Na ação Get Contents of URL, troque o Method para POST.", "abrir": ""})
 
 
 async def siri_info(request: web.Request) -> web.Response:
@@ -659,6 +667,8 @@ async def feed_get(request: web.Request) -> web.Response:
 
 async def static(request: web.Request) -> web.StreamResponse:
     rel = request.match_info.get("path") or "index.html"
+    if rel.startswith("api/"):  # rota da API que não existe: dados, não a página do app (o Atalho não lê página)
+        return web.json_response({"fala": "Esse endereço não existe na Friday. Confira se o endereço do atalho termina em barra api barra siri.", "abrir": ""}, status=404)
     if rel in ("icon-180.png", "icon-192.png", "icon-512.png"):
         png = await asyncio.to_thread(icon_png, int(rel[5:8]))
         return web.Response(body=png, content_type="image/png", headers={"Cache-Control": "no-cache"})
@@ -690,6 +700,7 @@ async def start() -> None:
     r.add_get("/api/events", orbit.events)
     r.add_post("/api/ask", ask)
     r.add_post("/api/siri", siri)
+    r.add_get("/api/siri", siri_get)
     r.add_get("/api/siri-info", siri_info)
     r.add_post("/api/voice", voice_in)
     r.add_get("/api/feed", feed_get)
