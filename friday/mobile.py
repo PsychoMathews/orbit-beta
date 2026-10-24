@@ -275,8 +275,8 @@ def _on_event(ev: dict) -> None:
 async def _guard(request: web.Request, handler):
     if not request.path.startswith("/api/") or request.path == "/api/pair":
         return await handler(request)
-    if request.path == "/api/siri" and request.method == "GET":
-        return await handler(request)
+    if (request.path == "/api/siri" and request.method == "GET") or request.path.startswith("/api/siri-audio/"):
+        return await handler(request)  # o áudio tem nome aleatório de uso único (vale 10 min): basta como senha
     if request.path == "/api/siri":  # Atalho da Siri: senha própria no cabeçalho, sem cookie
         if secrets.compare_digest(request.headers.get("X-Orbit-Token", ""), _load().get("siri_token") or "-"):
             return await handler(request)
@@ -372,9 +372,38 @@ async def siri(request: web.Request) -> web.Response:
         reply = "Tive um problema pra responder agora. Tenta de novo daqui a pouco."
     url, _action["url"] = _action["url"], ""
     out = {"fala": speech.for_speech(reply or "Feito.")}
+    audio = await _siri_voice(reply or "Feito.", request.headers.get("X-Forwarded-Host") or request.host)
+    if audio:  # o Atalho toca este áudio (voz dela) em vez de ler o texto com a voz do iPhone
+        out["audio"] = audio
     if url:  # sem link, sem o campo: o Atalho entende "abrir" vazio como valor e tenta abrir um endereço em branco
         out["abrir"] = url
     return web.json_response(out)
+
+
+# Áudio das respostas do Atalho (voz da assistente, em português): fica 10 min num endereço de nome aleatório.
+_siri_audio: dict = {}  # id -> (instante, mp3)
+
+
+async def _siri_voice(text: str, host: str) -> str:
+    from . import voice
+    try:
+        mp3 = await asyncio.wait_for(voice.speak_mp3(text), 25)
+    except Exception:
+        log.exception("Atalho da Siri: resposta sem áudio")
+        return ""
+    now = time.time()
+    for k in [k for k, (t, _) in _siri_audio.items() if now - t > 600]:
+        _siri_audio.pop(k, None)
+    aid = secrets.token_urlsafe(16)
+    _siri_audio[aid] = (now, mp3)
+    return f"https://{host}/api/siri-audio/{aid}.mp3"
+
+
+async def siri_audio(request: web.Request) -> web.Response:
+    item = _siri_audio.get(request.match_info["id"])
+    if not item:
+        return web.Response(status=404)
+    return web.Response(body=item[1], content_type="audio/mpeg")
 
 
 async def siri_get(request: web.Request) -> web.Response:
@@ -720,6 +749,7 @@ async def start() -> None:
     r.add_post("/api/ask", ask)
     r.add_post("/api/siri", siri)
     r.add_get("/api/siri", siri_get)
+    r.add_get("/api/siri-audio/{id}.mp3", siri_audio)
     r.add_get("/api/siri-info", siri_info)
     r.add_post("/api/voice", voice_in)
     r.add_get("/api/feed", feed_get)

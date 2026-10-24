@@ -740,10 +740,10 @@ view({
         <div class="label" style="margin-bottom:8px">Montar no app Atalhos (uma vez)</div>
         <ol class="steps">
           <li>Novo atalho, com o nome <b>Chama Friday</b>.</li>
-          <li><b>Ditar Texto</b> (idioma Português, parar ao fazer pausa).</li>
-          <li><b>Obter Conteúdo do URL</b>: cole o <b>Endereço</b>; Método <b>POST</b>; Cabeçalho <b>X-Orbit-Token</b> = a <b>Senha</b>; Corpo <b>JSON</b> com o campo <b>texto</b> = Texto Ditado.</li>
-          <li><b>Obter Valor do Dicionário</b>: chave <b>fala</b> → depois <b>Falar Texto</b> com o valor.</li>
-          <li><b>Obter Valor do Dicionário</b>: chave <b>abrir</b> do Conteúdo do URL → <b>Se</b> tem algum valor → <b>Abrir URLs</b>.</li>
+          <li><b>Dictate Text</b> (Portuguese (Brazil), Stop Listening: After Pause).</li>
+          <li><b>Get Contents of URL</b>: cole o <b>Endereço</b>; Method <b>POST</b>; Header <b>X-Orbit-Token</b> = a <b>Senha</b>; Request Body <b>JSON</b> com o campo <b>texto</b> = Dictated Text.</li>
+          <li><b>Get Dictionary Value</b>: chave <b>audio</b> in Contents of URL → <b>Get Contents of URL</b> com esse valor (GET) → <b>Play Sound</b>.</li>
+          <li><b>Get Dictionary Value</b>: chave <b>abrir</b> in <b>Contents of URL</b> (o primeiro) → <b>If</b> has any value → <b>Open URLs</b>.</li>
         </ol>`;
       box.querySelectorAll('[data-copy]').forEach((b) => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copiado.'); } catch { toast(b.dataset.copy, 8000); } });
       $('[data-renew]', box).onclick = (e) => {
