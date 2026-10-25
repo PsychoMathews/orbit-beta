@@ -284,6 +284,8 @@ async def _on_startup(app) -> None:
         claude_agent.set_notifier(asyncio.get_running_loop(), notify)  # avisa quando o Claude terminar
         asyncio.get_running_loop().create_task(vault.run(notify))  # revisão da noite: aprende com o dia
         asyncio.get_running_loop().create_task(agent.run(notify))  # modo agente: acompanha o dia e chama quando vale
+        from . import meetings
+        meetings.set_notifier(asyncio.get_running_loop(), notify)  # nota da reunião pronta
         if app:
             delivery.set_sender(asyncio.get_running_loop(), app.bot, config.OWNER_ID)  # arquivos e prints no Telegram
     if True:

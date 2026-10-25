@@ -348,7 +348,8 @@ async def _meeting_alerts(now: datetime, state: dict, notify) -> None:
         alerted[key] = now.isoformat()
         title = ev.get("summary", "um compromisso")
         when = "agora" if minutes <= 1 else f"em {minutes} minutos"
-        await notify(f"📅 {title} começa {when}.", f"Chefe, {title} começa {when}.", kind="meeting")
+        offer = " Quer que eu grave? Diga 'grava a reunião'." if minutes >= 2 else ""
+        await notify(f"📅 {title} começa {when}.{offer}", f"Chefe, {title} começa {when}.{offer}", kind="meeting")
     # limpa avisos antigos
     for k in [k for k, v in alerted.items() if _parse_when(v) < now - timedelta(days=2)]:
         alerted.pop(k)

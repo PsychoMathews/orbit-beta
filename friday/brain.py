@@ -486,6 +486,8 @@ TOOL_GROUPS = {
             ["web_search", "read_page", "weather", "currency"]),
     "links": (r"https?://|\blink\b|instagram|reels?\b|youtube|tiktok|\bbaix|download|analis|esmi[uú][cç]|resum",
               ["download_video", "analyze_link", "email_me", "note_add", "idea_add"]),
+    "meeting": (r"grav(a|ar|e|ando)\b.*reuni|reuni[aã]o.*grav|para(r)? de gravar|para(r)? a grava[cç][aã]o|encerra(r)? a grava",
+                ["meeting_record"]),
     "agent": (r"miss[aã]o|miss[oõ]es|me cobra|fica de olho|modo agente|fica quieta|o que voc[eê] fez hoje",
               ["mission_add", "mission_done", "mission_list", "agent_mode", "agent_log"]),
     "ideas": (_IDEA_PATTERN + r"|me lembr|anota",

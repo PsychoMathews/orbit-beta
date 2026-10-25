@@ -238,6 +238,8 @@ async def run(notify) -> None:
     """Relógio do agente: a cada minuto vê prazos de missões, reuniões que acabaram e a olhada de hora em hora."""
     while True:
         try:
+            from . import meetings
+            meetings.tick()  # gravação de reunião: para sozinha no fim do horário
             s = _load()
             now = datetime.now(TZ)
             awake = s.get("on", True) and time.time() >= s.get("quiet_until", 0) and DAY_START <= now.hour < DAY_END

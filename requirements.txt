@@ -15,6 +15,7 @@ sounddevice==0.5.1
 send2trash==1.8.3
 aiohttp==3.10.10
 pywebpush==2.5.0  # push no iPhone (app Orbit no celular)
+soundcard==0.4.6  # gravar reunião: som do PC (loopback) + microfone
 ask-sdk-core==1.19.0
 ask-sdk-webservice-support==1.3.3
 winrt-Windows.Media.Control
