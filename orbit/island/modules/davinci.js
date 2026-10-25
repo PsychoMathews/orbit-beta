@@ -30,6 +30,9 @@ Orbit.register({
     if (!d) { this.view.innerHTML = this.failed ? failNote('o DaVinci') : `<div class="card hero row" style="margin-bottom:8px"><span class="mark"><i class="spin" style="width:20px;height:20px"></i></span>
       <div style="flex:1"><div class="title">Conversando com o DaVinci…</div><div class="faint">o Resolve demora alguns segundos para responder</div></div></div>
       <div class="list"><div class="skel" style="height:48px"></div><div class="skel" style="height:48px;opacity:.6"></div></div>`; return; }
+    if (d.noscript) { // aberto, mas o script do Resolve não responde: diz onde ligar em vez de fingir que fechou
+      this.view.innerHTML = '<div class="empty">DaVinci Resolve aberto, mas sem acesso ao projeto.<br>Ligue em Preferências › Sistema › Geral › <b>External scripting using: Local</b>.</div>'; return;
+    }
     if (!d.running) { this.view.innerHTML = '<div class="empty">DaVinci Resolve fechado (ou sem projeto aberto).</div>'; return; }
     const jobs = d.jobs.map((j) => {
       const done = /conclu|complete/i.test(j.status), bad = /fail|falh|cancel/i.test(j.status);
@@ -44,7 +47,7 @@ Orbit.register({
         <span class="mark">${icon('film', 22)}</span>
         <div style="flex:1;min-width:0"><div class="title ellipsis">${esc(d.project)}${this.loading ? ' <i class="spin" title="Atualizando"></i>' : ''}</div>
         <div class="faint ellipsis">${d.timeline ? 'Timeline: ' + esc(d.timeline) : 'Sem timeline aberta'}</div></div>
-        <span class="chip" style="color:${d.rendering ? 'var(--warn)' : d.playing ? 'var(--ok)' : 'var(--dim)'}">${d.rendering ? 'Renderizando' : d.playing ? '▶ Tocando' : d.busy ? 'Ocupado' : 'Parado'}</span>
+        <span class="chip" style="color:${d.rendering ? 'var(--warn)' : d.playing ? 'var(--ok)' : 'var(--dim)'}">${d.rendering ? 'Renderizando' : d.playing ? '▶ Tocando' : d.busy ? 'Ocupado' : 'Aberto'}</span>
       </div>
       <div class="list">${jobs || '<div class="empty" style="padding:16px 0">Fila de render vazia.</div>'}</div>`;
   },

@@ -361,8 +361,9 @@ async def resolve_info(request: web.Request) -> web.Response:
         except Exception:
             log.debug("DaVinci indisponível", exc_info=True)
             data = {"running": False, "jobs": []}
-        if not data.get("running") and prev.get("running") and await asyncio.to_thread(alive):
-            data = {**prev}  # o script falhou mas o programa está aberto: não diz que fechou
+        if not data.get("running") and await asyncio.to_thread(alive):
+            # o script falhou mas o programa está aberto: não diz que fechou
+            data = {**prev} if prev.get("running") else {"running": False, "noscript": True, "jobs": []}
         _resolve_cache = (time.time(), data)
 
     ttl = 4 if _resolve_cache[1].get("running") else 20  # fechado: perguntar de novo custa ~4 s, então espera mais
