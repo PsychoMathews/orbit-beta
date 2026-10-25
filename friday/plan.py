@@ -10,6 +10,8 @@ import logging
 import os
 import subprocess
 import sys
+import threading
+import time
 from datetime import date
 from pathlib import Path
 
@@ -54,12 +56,88 @@ def _conversation(history, text: str, note: str) -> str:
     return f"{past}Mensagem nova dele: {text}" + (f"\n\n[sistema] {note}" if note else "")
 
 
-def _run(system: str, prompt: str, with_google: bool) -> dict:
-    mcp = {"mcpServers": {"friday": {
+def _mcp(with_google: bool) -> dict:
+    return {"mcpServers": {"friday": {
         "command": str(Path(sys.executable).with_name("python.exe")), "args": ["-m", "friday.mcp_server"],
         "env": {"FRIDAY_TOOL_URL": f"http://127.0.0.1:{orbit.PORT}/orbit/tool", "FRIDAY_TOOL_TOKEN": orbit.TOOL_TOKEN,
                 "FRIDAY_TOOLS_FILE": str(_schemas(with_google)), "PYTHONPATH": str(Path(__file__).parent.parent)},
     }}}
+
+
+# ---------- Claude já aberto, esperando a próxima pergunta ----------
+# Abrir o Claude Code a cada pergunta (programa + ferramentas da assistente) custa ~2,5 s. Aqui fica um aberto, em
+# espera, com a mesma configuração; a pergunta chega pela entrada dele (stream-json) e, enquanto ele responde, já
+# abre o próximo. Cada pergunta usa um Claude novo (sem conversa acumulada). Falhou? Volta para o jeito de sempre.
+WARM_SYSTEM = ("Você é a assistente pessoal descrita dentro de <sistema> no começo de cada mensagem. Siga aquelas "
+               "instruções como se fossem o seu prompt de sistema.")
+WARM_MAX_AGE = 30 * 60  # aberto há mais que isso: troca por um novo (login e ferramentas sempre frescos)
+_warm: dict = {}         # with_google -> (Popen, aberto_em)
+_warm_lock = threading.Lock()
+
+
+def _spawn(with_google: bool):
+    cmd = [claude_agent.CLAUDE, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+           "--model", claude_agent.MODEL, "--system-prompt", WARM_SYSTEM, "--tools", "WebSearch,WebFetch",
+           "--mcp-config", json.dumps(_mcp(with_google)), "--strict-mcp-config",
+           "--allowedTools", "mcp__friday,WebSearch,WebFetch", "--setting-sources", "", "--no-session-persistence"]
+    return subprocess.Popen(cmd, cwd=Path(__file__).parent.parent, env=claude_agent.PLAN_ENV, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+                            creationflags=subprocess.CREATE_NO_WINDOW)
+
+
+def _refill(with_google: bool) -> None:
+    with _warm_lock:
+        old = _warm.pop(with_google, None)
+        if old and old[0].poll() is None:
+            old[0].kill()
+        _warm[with_google] = (_spawn(with_google), time.time())
+
+
+def warm_up(with_google: bool) -> None:
+    """Deixa um Claude aberto esperando (chamado no início e depois de cada pergunta)."""
+    threading.Thread(target=_refill, args=(with_google,), daemon=True).start()
+
+
+def _run_warm(system: str, prompt: str, with_google: bool) -> dict:
+    with _warm_lock:
+        proc, born = _warm.pop(with_google, (None, 0))
+    if not proc or proc.poll() is not None or time.time() - born > WARM_MAX_AGE:
+        if proc and proc.poll() is None:
+            proc.kill()
+        raise RuntimeError("sem Claude aberto")
+    warm_up(with_google)  # o próximo já vai abrindo enquanto este responde
+    msg = {"type": "user", "message": {"role": "user", "content": f"<sistema>\n{system}\n</sistema>\n\n{prompt}"}}
+    proc.stdin.write(json.dumps(msg, ensure_ascii=False) + "\n")
+    proc.stdin.flush()
+    result, deadline = {}, time.time() + 180
+    for line in proc.stdout:
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if ev.get("type") == "result":
+            result = ev
+            break
+        if time.time() > deadline:
+            break
+    try:
+        proc.stdin.close()
+        proc.wait(timeout=10)
+    except Exception:
+        proc.kill()
+    if not result:
+        raise RuntimeError("Claude aberto não respondeu")
+    return result
+
+
+def _run(system: str, prompt: str, with_google: bool) -> dict:
+    try:
+        return _run_warm(system, prompt, with_google)
+    except Exception as e:
+        if "sem Claude aberto" not in str(e):
+            log.warning("Claude já aberto falhou (%s); abrindo um do jeito normal", e)
+        warm_up(with_google)
+    mcp = _mcp(with_google)
     cmd = [claude_agent.CLAUDE, "-p", prompt, "--output-format", "json", "--model", claude_agent.MODEL,
            "--system-prompt", system, "--tools", "WebSearch,WebFetch",
            "--mcp-config", json.dumps(mcp), "--strict-mcp-config",

@@ -273,6 +273,10 @@ async def _on_startup(app) -> None:
     except Exception:
         log.exception("App do celular não pôde ser iniciado")
     asyncio.get_running_loop().create_task(brain.warm_up())
+    if config.CLOUD_BACKEND == "plano":  # Claude já aberto esperando a primeira pergunta (economiza ~2,5 s cada)
+        from . import plan
+        from .google_auth import connected as _google_on
+        plan.warm_up(_google_on())
     if True:  # antes só com Telegram; agora os avisos também vivem só na ilha e na voz do PC
         asyncio.get_running_loop().create_task(proactive.run(notify, ask_brain))
         await hub.run(notify)

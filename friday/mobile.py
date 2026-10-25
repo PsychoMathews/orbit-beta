@@ -607,8 +607,8 @@ async def siri(request: web.Request) -> web.Response:
             if audio:
                 out["audio"] = audio
         return web.json_response(out)
-    # Contexto vai no fim (texto começando com "[" o cérebro manda para o modelo local, que não serve aqui).
-    ask = (f"{text}\n\n(Pedido por voz pelo atalho da Siri no celular: ele está longe do PC e pode estar dirigindo. "
+    # Instruções do canal vão à parte (context), nunca no texto: senão viram "a pergunta" para o cérebro.
+    context = ("Pedido por voz pelo atalho do celular: ele está longe do PC e pode estar dirigindo. "
            "'Abre X' é no celular (open_phone_app); rota é open_waze; música é spotify_play no celular. "
            "Rota para um lugar pelo nome (restaurante, loja, academia): pesquise na internet o endereço exato (o ditado "
            "pode ter escrito o nome errado, ex. 'Low Barbecue' = 'Low BBQ'), chame open_waze com rua, número, bairro e cidade, "
@@ -617,10 +617,10 @@ async def siri(request: web.Request) -> web.Response:
            "Não abra nada no PC. "
            "COMO RESPONDER (vai ser falado no carro): comece pela resposta, em no máximo 2 frases curtas (até 35 palavras). "
            "Sem 'pesquisei', sem repetir o nome dele, sem ressalvas ('isso não garante...'), sem fontes, sem listas. "
-           "Números redondos ('uns 49 por cento'). Se houver detalhe que valha a pena, diga só o essencial: o resto vai por escrito.)")
+           "Números redondos ('uns 49 por cento'). Se houver detalhe que valha a pena, diga só o essencial: o resto vai por escrito.")
     # A Siri desiste de esperar a rede em ~10 s. Pesquisa leva 12 a 15 s: passou de 8 s, responde "tô pesquisando",
     # termina no PC e entrega por notificação no iPhone (e no próximo "e aí?" pelo atalho).
-    task = asyncio.ensure_future(brain.ask(config.OWNER_ID, ask, spoken=True, channel="telegram"))
+    task = asyncio.ensure_future(brain.ask(config.OWNER_ID, text, spoken=True, channel="telegram", context=context))
     try:
         # Pelo botão de Ação não há o limite de ~10 s da Siri; quem ainda usa a Siri manda "espera": 8.
         reply, _ = await asyncio.wait_for(asyncio.shield(task), float(b.get("espera") or 25))

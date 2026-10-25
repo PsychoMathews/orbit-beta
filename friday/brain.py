@@ -559,7 +559,7 @@ SPOKEN_STYLE = (
 
 
 async def ask(chat_id: int, text: str, heavy: bool = False, spoken: bool = False,
-              use_tools: bool = True, channel: str = "telegram") -> tuple[str, list[str]]:
+              use_tools: bool = True, channel: str = "telegram", context: str = "") -> tuple[str, list[str]]:
     """Retorna (resposta, ids de ações pendentes que precisam de confirmação).
 
     channel ("pc", "telegram", "alexa") decide se o que não é comando simples vai para o cérebro na nuvem."""
@@ -609,6 +609,9 @@ async def ask(chat_id: int, text: str, heavy: bool = False, spoken: bool = False
             note = (f"Já consultei {required} para esta pergunta; não precisa chamar de novo. Resultado: "
                     f"{messages[-1]['content']}")
         try:
+            # context: instruções do canal (ex.: atalho do celular). Vão à parte, para não virarem "a pergunta" (antes,
+            # "rota"/"trânsito" das instruções disparavam a pré-busca de trânsito em toda pergunta pelo atalho).
+            note = "\n\n".join(x for x in (context, note) if x)
             reply, used, pending = await cloud.ask(system, history, text, with_google, note)
             if reply:
                 if "claude_think" in used:
