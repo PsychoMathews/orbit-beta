@@ -55,6 +55,9 @@ VOICE_CACHE = MEMORIA / "voz-cache"
 
 def _disk_key(text: str) -> Path:
     key = f"{config.ELEVENLABS_VOICE_ID}|{config.ALEXA_VOICE_MODEL}|{text}"
+    ref = voice.PROPRIA_DIR / "referencia.wav"
+    if config.VOICE_ENGINE == "propria" and ref.exists():  # trocou a voz (outra referência): o cache renova sozinho
+        key = f"propria|{int(ref.stat().st_mtime)}|{text}"
     return VOICE_CACHE / (hashlib.sha1(key.encode()).hexdigest() + ".mp3")
 
 
@@ -85,7 +88,7 @@ async def _voice(text: str, deadline: float, cache: bool = False) -> str | None:
     _audio[audio_id] = (float("inf") if cache else now, mp3)  # frases fixas não expiram
     if cache:
         _cache[text] = audio_id
-        if voice.last_engine == "elevenlabs":  # a voz local de reserva não vai para o disco
+        if voice.last_engine in ("elevenlabs", "propria"):  # a voz de reserva não vai para o disco
             VOICE_CACHE.mkdir(parents=True, exist_ok=True)
             _disk_key(text).write_bytes(mp3)
     return audio_id
@@ -250,5 +253,7 @@ async def start(send_to_telegram) -> None:
     log.info("Alexa ouvindo em http://127.0.0.1:%s/alexa (skill %s)", config.ALEXA_PORT,
              "configurada" if config.ALEXA_SKILL_ID else "AINDA NÃO configurada")
     # Gera de antemão as frases fixas com a voz da Friday, para tocarem na hora.
+    # Espera a voz própria carregar: senão as frases ficavam guardadas com a voz de reserva.
+    await asyncio.to_thread(voice.esperar_voz)
     for phrase in phrases.ALL:
         await _voice(phrase, time.monotonic() + 30, cache=True)

@@ -1,0 +1,11 @@
+# Voz própria da Friday (VOICE_ENGINE=propria): Qwen3-TTS na placa de vídeo, num Python separado.
+# Fica fora do .venv principal (o PyTorch tem ~3 GB) e fora do OneDrive. Para instalar (precisa do uv):
+#   uv venv "%LOCALAPPDATA%\Friday\voz\.venv" --python 3.12
+#   uv pip install --python "%LOCALAPPDATA%\Friday\voz\.venv\Scripts\python.exe" torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+#   uv pip install --python "%LOCALAPPDATA%\Friday\voz\.venv\Scripts\python.exe" -r requirements-voz.txt
+# O modelo (Qwen/Qwen3-TTS-12Hz-0.6B-Base, ~1,5 GB) baixa sozinho no primeiro uso.
+faster-qwen3-tts==0.5.4  # MIT; roda o Qwen3-TTS (Apache 2.0) com CUDA graphs, ~6x mais rápido
+transformers==5.15.1     # 5.20 quebra o faster-qwen3-tts (MimiConfig sem rope_theta)
+wordfreq==3.1.1          # acha os nomes em inglês no meio do português
+soundfile==0.14.0
+numpy

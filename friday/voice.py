@@ -1,9 +1,11 @@
 """Voz da Friday: falar (TTS) e ouvir (STT).
 
 Padrão: tudo local (Kokoro para falar, Whisper na GPU para ouvir), sem custo.
+VOICE_ENGINE=propria: voz própria da Friday (Qwen3-TTS na placa, friday/tts_worker.py), com a Microsoft de reserva.
 ElevenLabs continua disponível: VOICE_ENGINE=elevenlabs / STT_ENGINE=elevenlabs no .env.
 """
 import asyncio
+import json
 import logging
 import os
 import re
@@ -40,16 +42,28 @@ def can_listen() -> bool:
 
 # ---------- Falar ----------
 
-last_engine = ""  # "elevenlabs", "edge" ou "local": qual voz gerou o último áudio
+last_engine = ""  # "propria", "elevenlabs", "edge" ou "local": qual voz gerou o último áudio
 _eleven_paused_until = 0.0  # sem créditos: não insiste na ElevenLabs por um tempo
 
 
 async def speak(text: str, model: str | None = None) -> bytes:
     """Texto -> áudio OGG/Opus (formato de mensagem de voz do Telegram).
-    Ordem: ElevenLabs (voz da Friday) -> voz neural da Microsoft -> Kokoro (local, sem internet)."""
+    Ordem: voz própria ou ElevenLabs (conforme VOICE_ENGINE) -> voz neural da Microsoft -> Kokoro (local, sem internet)."""
     global last_engine, _eleven_paused_until
     text = speech.for_speech(text)
     vlog = logging.getLogger("friday.voice")
+    if config.VOICE_ENGINE == "propria":
+        try:
+            # ~15 letras por segundo de fala, gerada ~2x mais rápido que o tempo real; folga para a primeira frase
+            samples, rate = await asyncio.wait_for(asyncio.to_thread(_propria_tts, text), 10 + len(text) / 15)
+            out = await _ffmpeg(samples.tobytes(), ["-f", "f32le", "-ar", str(rate), "-ac", "1", "-i", "pipe:0"])
+            last_engine = "propria"
+            return out
+        except Exception as e:
+            if isinstance(e, asyncio.TimeoutError):
+                unload_propria()  # travou: derruba o processo (destrava a leitura) e sobe de novo na próxima
+                e = "demorou demais"
+            vlog.info("Voz própria indisponível (%s); usando a da Microsoft", e)
     if config.VOICE_ENGINE == "elevenlabs" and config.ELEVENLABS_API_KEY and time.time() >= _eleven_paused_until:
         try:
             out = await _ffmpeg(await _elevenlabs_tts(text, model), ["-i", "pipe:0"])
@@ -93,6 +107,124 @@ def _kokoro_tts(text: str):
             from kokoro_onnx import Kokoro
             _kokoro = Kokoro(str(MODELS / "kokoro-v1.0.onnx"), str(MODELS / "voices-v1.0.bin"))
         return _kokoro.create(text, voice=config.KOKORO_VOICE, speed=config.KOKORO_SPEED, lang="pt-br")
+
+
+# ---------- Voz própria (Qwen3-TTS num processo à parte, com o Python da voz) ----------
+
+PROPRIA_DIR = MODELS / "voz-propria"  # referencia.wav + referencia.txt: a voz que o modelo copia
+PROPRIA_VRAM = 3200  # MB livres na placa para subir (ela usa ~2,7 GB)
+_propria = None
+_propria_pronta = threading.Event()
+_propria_start = threading.Lock()
+_propria_fala = threading.Lock()  # um pedido por vez no processo da voz
+_propria_usada = 0.0
+_propria_tentou = 0.0
+
+
+def _propria_instalada() -> bool:
+    return (config.VOICE_ENGINE == "propria" and Path(config.VOZ_PROPRIA_PYTHON).exists()
+            and (PROPRIA_DIR / "referencia.wav").exists())
+
+
+def preload_propria() -> None:
+    """Sobe o processo da voz própria (leva ~20 s). Não sobe no modo jogo nem com a placa cheia."""
+    global _propria, _propria_tentou
+    if not _propria_instalada():
+        return
+    from . import gamemode
+    if gamemode.is_on():
+        return
+    with _propria_start:
+        if _propria is not None and _propria.poll() is None:
+            return
+        if time.time() - _propria_tentou < 60:  # placa cheia ou falhou agora há pouco: não insiste
+            return
+        _propria_tentou = time.time()
+        livre = _vram_free_mb()
+        if livre < PROPRIA_VRAM:
+            # O cérebro local (Ollama) ocupa ~5 GB. Carregado antes, não deixa a voz subir; depois dela, os dois cabem
+            # e rodam na mesma velocidade (medido em 25/10). Então ele sai, a voz sobe, e ele volta na próxima pergunta.
+            _tirar_ollama()
+            livre = _vram_free_mb()
+        if livre < PROPRIA_VRAM:
+            log.info("Voz própria não subiu: só %d MB livres na placa de vídeo", livre)
+            return
+        _propria_pronta.clear()
+        _propria = p = subprocess.Popen(
+            [config.VOZ_PROPRIA_PYTHON, "-m", "friday.tts_worker", str(PROPRIA_DIR / "referencia.wav"),
+             str(PROPRIA_DIR / "referencia.txt"), config.VOZ_PROPRIA_MODELO],
+            cwd=str(APP_DIR), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+    threading.Thread(target=_propria_carregando, args=(p,), daemon=True, name="voz-propria").start()
+
+
+def _tirar_ollama() -> None:
+    try:
+        httpx.post(f"{config.OLLAMA_URL}/api/generate", json={"model": config.OLLAMA_MODEL, "keep_alive": 0}, timeout=20)
+        time.sleep(2)  # a placa demora um instante para liberar
+        log.info("Cérebro local saiu da placa para a voz própria subir primeiro")
+    except Exception:
+        log.warning("Não consegui tirar o cérebro local da placa", exc_info=True)
+
+
+def _propria_carregando(p) -> None:
+    global _propria_usada
+    t = time.time()
+    while b"ready" not in (line := p.stdout.readline()):
+        if not line:
+            log.warning("Voz própria saiu ao carregar")
+            return
+    _propria_usada = time.time()
+    _propria_pronta.set()
+    log.info("Voz própria pronta (%.0f s para carregar)", time.time() - t)
+    if config.VOZ_PROPRIA_OCIOSA:
+        while _propria is p and p.poll() is None:
+            time.sleep(60)
+            if time.time() - _propria_usada > config.VOZ_PROPRIA_OCIOSA * 60:
+                unload_propria()
+                log.info("Voz própria saiu da placa (%d min sem uso)", config.VOZ_PROPRIA_OCIOSA)
+
+
+def esperar_voz(timeout: float = 90) -> None:
+    """Espera a voz própria carregar (para não gravar frases prontas com a voz de reserva)."""
+    preload_propria()
+    if _propria is not None and _propria.poll() is None:
+        _propria_pronta.wait(timeout)
+
+
+def unload_propria() -> None:
+    """Tira a voz própria da placa de vídeo (modo jogo, ou quando travou)."""
+    global _propria
+    with _propria_start:
+        p, _propria = _propria, None
+        _propria_pronta.clear()
+    if p and p.poll() is None:
+        p.kill()
+
+
+def _propria_tts(text: str):
+    global _propria_usada
+    from . import gamemode
+    p = _propria
+    if gamemode.is_on():
+        unload_propria()
+        raise RuntimeError("modo jogo")
+    if p is None or p.poll() is not None or not _propria_pronta.is_set():
+        threading.Thread(target=preload_propria, daemon=True).start()
+        raise RuntimeError("ainda carregando" if p is not None and p.poll() is None else "fora da placa")
+    with _propria_fala:
+        _propria_usada = time.time()
+        p.stdin.write(json.dumps({"text": text}).encode() + b"\n")
+        p.stdin.flush()
+        line = p.stdout.readline()
+        if not line:
+            _propria_pronta.clear()
+            raise RuntimeError("o processo da voz saiu")
+        head = json.loads(line)
+        if "error" in head:
+            raise RuntimeError(head["error"])
+        data = p.stdout.read(head["n"])
+    return np.frombuffer(data, np.float32), head["sr"]
 
 
 async def _elevenlabs_tts(text: str, model: str | None = None) -> bytes:
@@ -158,6 +290,7 @@ def preload_whisper() -> None:
             _whisper.ready = False
             if config.WHISPER_DEVICE == "cuda":
                 threading.Thread(target=_unload_when_idle, daemon=True, name="whisper-ocioso").start()
+    preload_propria()  # a voz também (volta depois do modo jogo)
 
 
 def unload_whisper() -> None:

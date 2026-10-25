@@ -99,6 +99,7 @@ def _free_gpu() -> None:
         httpx.post(f"{config.OLLAMA_URL}/api/generate", json={"model": config.OLLAMA_MODEL, "keep_alive": 0}, timeout=20)
         from . import voice
         voice.unload_whisper()
+        voice.unload_propria()
     except Exception:
         log.warning("Não consegui descarregar o modelo da placa", exc_info=True)
 

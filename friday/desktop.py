@@ -57,7 +57,9 @@ def start(loop: asyncio.AbstractEventLoop, send_to_telegram) -> None:
     if config.WHISPER_DEVICE != "cuda":  # na placa ele carrega na hora do atalho (e sai depois de 10 min)
         threading.Thread(target=voice.preload_whisper, daemon=True, name="carrega-whisper").start()
     # Frases de espera prontas de antemão: gerar na hora atrasava a resposta.
-    threading.Thread(target=lambda: [_phrase(p, loop) for p in phrases.WORKING], daemon=True, name="frases").start()
+    # Espera a voz própria carregar antes, senão as frases ficavam guardadas com a voz de reserva.
+    threading.Thread(target=lambda: (voice.esperar_voz(), [_phrase(p, loop) for p in phrases.WORKING]),
+                     daemon=True, name="frases").start()
     threading.Thread(target=_hotkey_thread, args=(config.HOTKEY, on_hotkey), daemon=True, name="atalho").start()
 
 

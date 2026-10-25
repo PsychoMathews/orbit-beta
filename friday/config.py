@@ -22,7 +22,8 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 # Modelo grande, usado com /pesado (mais lento, melhor para código, análise e pesquisa).
 OLLAMA_MODEL_HEAVY = os.getenv("OLLAMA_MODEL_HEAVY", "")
 
-# Voz: "local" (Kokoro, grátis) ou "elevenlabs". Ouvir: "local" (Whisper na GPU) ou "elevenlabs".
+# Voz: "propria" (Qwen3-TTS na placa, grátis), "edge" (Microsoft), "local" (Kokoro) ou "elevenlabs".
+# Ouvir: "local" (Whisper na GPU) ou "elevenlabs".
 VOICE_ENGINE = os.getenv("VOICE_ENGINE", "local")
 STT_ENGINE = os.getenv("STT_ENGINE", "local")
 # Voz de reserva quando a ElevenLabs falha (sem créditos/fora do ar): voz neural da Microsoft, grátis e sem chave.
@@ -30,6 +31,11 @@ EDGE_VOICE = os.getenv("EDGE_VOICE", "pt-BR-FranciscaNeural")  # a Thalita (mult
 EDGE_RATE = os.getenv("EDGE_RATE", "+8%")
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "pf_dora")
 KOKORO_SPEED = float(os.getenv("KOKORO_SPEED", "1.1"))
+# Voz própria: Python separado com PyTorch (ver requirements-voz.txt) e o modelo que copia a voz de models/voz-propria.
+VOZ_PROPRIA_PYTHON = os.path.expandvars(os.getenv("VOZ_PROPRIA_PYTHON", r"%LOCALAPPDATA%\Friday\voz\.venv\Scripts\python.exe"))
+VOZ_PROPRIA_MODELO = os.getenv("VOZ_PROPRIA_MODELO", "Qwen/Qwen3-TTS-12Hz-0.6B-Base")
+# Minutos parada até sair da placa de vídeo (0 = fica carregada; o modo jogo sempre tira).
+VOZ_PROPRIA_OCIOSA = int(os.getenv("VOZ_PROPRIA_OCIOSA", "0"))
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 # "cpu" (padrão) deixa a placa de vídeo livre para jogos e DaVinci; "cuda" usa a placa (um pouco mais rápido).
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
