@@ -35,6 +35,9 @@ WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 # Quanto tempo o modelo fica carregado na placa depois da última pergunta (ex.: 10m, 1h, 0 = descarrega na hora).
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
+# Memória de contexto do modelo local. O Ollama 0.40 recusa (erro 400) pedido maior que o padrão dele (4096 tokens),
+# e o prompt da assistente com histórico e ferramentas passa de 9 mil.
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "16384"))
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 

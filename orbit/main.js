@@ -108,6 +108,17 @@ function releaseMouse() {
   if (island && !island.isDestroyed()) island.setIgnoreMouseEvents(true, { forward: true });
 }
 
+// Depois que o monitor apaga e volta (modo servidor apaga a tela em 1 min), o Windows às vezes deixa a janela
+// "atravessável": o mouse passa (a ilha abre), mas o clique vai para trás. Refaz o controle de cliques do zero.
+function resetMouse(why) {
+  if (!island || island.isDestroyed()) return;
+  olog('Refazendo o controle de cliques:', why);
+  island.setIgnoreMouseEvents(false);
+  island.setIgnoreMouseEvents(true, { forward: true });
+  island.setAlwaysOnTop(true, 'screen-saver');
+  place();
+}
+
 function watchIsland(wc) {
   let hangTimer = null;
   const reload = (why) => {
@@ -129,8 +140,10 @@ function watchIsland(wc) {
   wc.on('did-fail-load', (_e, code, desc) => olog('Ilha não carregou:', code, desc));
   wc.on('console-message', (_e, level, msg, line, src) => { if (level >= 2) olog(`[ilha] ${msg} (${path.basename(src || '')}:${line})`); });
   // Ao acordar o PC (suspensão, tela apagada) solta o mouse por garantia: o "mouse saiu" pode ter se perdido.
-  require('electron').powerMonitor.on('resume', () => { olog('PC acordou'); releaseMouse(); });
-  require('electron').powerMonitor.on('unlock-screen', () => { olog('Tela desbloqueada'); releaseMouse(); });
+  const pm = require('electron').powerMonitor;
+  pm.on('resume', () => { olog('PC acordou'); resetMouse('PC acordou'); });
+  pm.on('unlock-screen', () => { olog('Tela desbloqueada'); resetMouse('tela desbloqueada'); });
+  screen.on('display-metrics-changed', () => setTimeout(() => resetMouse('monitor mudou'), 800));
 }
 
 function createIsland() {
@@ -662,13 +675,18 @@ async function dragIcon(file) {
 // quando o cursor está em cima da pílula (senão o "soltar" atravessaria a ilha).
 let islandRect = null;
 function watchCursor() {
-  let inside = false;
+  let inside = false, wasIdle = 0;
   setInterval(() => {
     if (!island || island.isDestroyed() || !islandRect) return;
+    // Voltou a mexer depois de mais de 1 min parado (a tela pode ter apagado): refaz o controle de cliques.
+    const idle = require('electron').powerMonitor.getSystemIdleTime();
+    if (wasIdle >= 60 && idle < 2) resetMouse(`voltou depois de ${wasIdle} s parado`);
+    wasIdle = idle;
     const p = screen.getCursorScreenPoint(), b = island.getBounds();
     const x = p.x - b.x, y = p.y - b.y, r = islandRect;
     const now = x >= r.x - 6 && x <= r.x + r.w + 6 && y >= r.y - 6 && y <= r.y + r.h + 6;
-    if (now && !inside) island.setIgnoreMouseEvents(false);
+    // Dentro da pílula: reafirma a cada volta que quer o clique (o Windows pode ter "esquecido" depois da tela apagar).
+    if (now) island.setIgnoreMouseEvents(false);
     // Plano B do "mouse saiu": a página às vezes não recebe o mouseleave (saída rápida, modo leve, outra janela
     // por cima) e a ilha fica aberta. O processo principal vê o cursor de verdade e avisa.
     if (!now && inside) island.webContents.send('cursor-out');

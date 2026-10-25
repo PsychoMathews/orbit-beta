@@ -523,6 +523,22 @@ async def _answer(text: str, want_voice: bool, brain, config, voice) -> dict:
 
 
 _later = {"text": "", "url": "", "t": 0.0}  # resposta que ficou pronta depois que a Siri desistiu de esperar
+_last_reply = {"text": ""}                    # para o "repete"
+SPOKEN_WORDS = 40                             # acima disso, fala o começo e manda o resto por notificação
+
+
+def _spoken(reply: str) -> str:
+    """Resposta longa: fala as primeiras frases (até ~40 palavras) e manda o texto inteiro por notificação."""
+    if len(reply.split()) <= SPOKEN_WORDS:
+        return reply
+    sentences, out = re.split(r"(?<=[.!?])\s+", reply), []
+    for s in sentences:
+        if out and len(" ".join(out + [s]).split()) > SPOKEN_WORDS:
+            break
+        out.append(s)
+    if _loop:
+        _loop.run_in_executor(None, push, assistente.NOME, reply[:1500], "siri")
+    return " ".join(out) + " Mandei os detalhes no celular."
 
 
 def _asks(reply: str) -> dict:
@@ -545,6 +561,7 @@ def _deliver_later(task: asyncio.Future) -> None:
         reply = "Não consegui terminar aquela pesquisa. Pode pedir de novo?"
     reply = _clean_reply(reply)
     _later.update(text=reply, url=_action["url"], t=time.time())
+    _last_reply["text"] = reply
     _action["url"] = ""
     if _loop:
         _loop.run_in_executor(None, push, assistente.NOME, reply[:300], "siri")
@@ -562,14 +579,17 @@ async def siri(request: web.Request) -> web.Response:
     if not text:
         return web.json_response({"fala": "Não ouvi nada. Pode repetir?"})
     _action["url"] = ""
-    # "E aí?" / "qual o resultado?": entrega a resposta que ficou pronta depois (até 30 min).
+    # "E aí?" / "aí" / "qual o resultado?": entrega a resposta que ficou pronta depois (até 30 min).
     if _later["text"] and time.time() - _later["t"] < 1800 and re.fullmatch(
-            r"\W*(e a[ií]|e ent[aã]o|qual (foi )?o resultado|j[aá] (achou|terminou|tem)|terminou|e a[ií],? (achou|encontrou).*|o que voc[eê] achou|resultado)\W*", text, re.I):
+            r"\W*(e\s+)?(a[ií]|ent[aã]o|qual (foi )?o resultado|j[aá] (achou|terminou|tem)|terminou|a[ií],? (achou|encontrou).*|o que voc[eê] achou|resultado)\W*", text, re.I):
         out = {"fala": speech.for_speech(_later["text"])}
         if _later["url"]:
             out["abrir"] = _later["url"]
-        _later["text"] = ""
+        _last_reply["text"], _later["text"] = _later["text"], ""
         return web.json_response(out)
+    # "Repete" / "o que você disse?" / "sua resposta anterior": repete na hora, sem pensar de novo.
+    if _last_reply["text"] and re.fullmatch(r"\W*(repete|repita|repete a[ií]|fala de novo|o que voc[eê] (disse|falou)|(sua|a) (resposta|[uú]ltima resposta)( anterior)?|n[aã]o (ouvi|entendi))\W*", text, re.I):
+        return web.json_response({"fala": speech.for_speech(_last_reply["text"])})
     if _waiting_msg["who"] and time.time() - _waiting_msg["t"] < 120:
         who, _waiting_msg["who"] = _waiting_msg["who"], ""
         text = f"manda uma mensagem pra {who} {text}"  # resposta ao "O que eu digo para X?"
@@ -594,12 +614,16 @@ async def siri(request: web.Request) -> web.Response:
            "pode ter escrito o nome errado, ex. 'Low Barbecue' = 'Low BBQ'), chame open_waze com rua, número, bairro e cidade, "
            "e diga o nome e a rua na resposta. Casa, trabalho e casa de alguém: só endereços salvos (ferramenta traffic "
            "ou nota Pessoas); NUNCA pesquise uma pessoa na internet: sem endereço salvo, diga que não tem e não abra nada. "
-           "Não abra nada no PC. Responda curto, para ser falado.)")
+           "Não abra nada no PC. "
+           "COMO RESPONDER (vai ser falado no carro): comece pela resposta, em no máximo 2 frases curtas (até 35 palavras). "
+           "Sem 'pesquisei', sem repetir o nome dele, sem ressalvas ('isso não garante...'), sem fontes, sem listas. "
+           "Números redondos ('uns 49 por cento'). Se houver detalhe que valha a pena, diga só o essencial: o resto vai por escrito.)")
     # A Siri desiste de esperar a rede em ~10 s. Pesquisa leva 12 a 15 s: passou de 8 s, responde "tô pesquisando",
     # termina no PC e entrega por notificação no iPhone (e no próximo "e aí?" pelo atalho).
     task = asyncio.ensure_future(brain.ask(config.OWNER_ID, ask, spoken=True, channel="telegram"))
     try:
-        reply, _ = await asyncio.wait_for(asyncio.shield(task), 8)
+        # Pelo botão de Ação não há o limite de ~10 s da Siri; quem ainda usa a Siri manda "espera": 8.
+        reply, _ = await asyncio.wait_for(asyncio.shield(task), float(b.get("espera") or 25))
     except asyncio.TimeoutError:
         task.add_done_callback(_deliver_later)
         return web.json_response({"fala": "Tô pesquisando. Te aviso no celular assim que tiver a resposta."})
@@ -608,7 +632,9 @@ async def siri(request: web.Request) -> web.Response:
         reply = "Tive um problema pra responder agora. Tenta de novo daqui a pouco."
     url, _action["url"] = _action["url"], ""
     reply = _clean_reply(reply)
-    out = {"fala": speech.for_speech(reply or "Feito."), **_asks(reply)}
+    spoken = _spoken(reply or "Feito.")
+    _last_reply["text"] = reply or ""
+    out = {"fala": speech.for_speech(spoken), **_asks(spoken)}
     if b.get("voz"):  # só se o Atalho pedir ("voz": true): gerar o áudio leva 1 a 3 s
         audio = await _siri_voice(reply or "Feito.", request.headers.get("X-Forwarded-Host") or request.host)
         if audio:

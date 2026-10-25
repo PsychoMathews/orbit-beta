@@ -113,8 +113,8 @@ def add_reminder(text: str, when: str = "", in_minutes: int = 0, repeat: str = "
         return "Esse horário já passou. Peça outro horário ao usuário."
     rep_ = _repeat_norm(repeat)
     if rep_ is None:
-        return f"Repetição inválida: {repeat}. Use diario, dias_uteis, semanal, mensal ou dias como 'seg,qua,sex'."
-    if rep_ and rep_ not in ("diario", "semanal", "mensal", "dias_uteis") and dt.weekday() not in {_WD[d] for d in rep_.split(",")}:
+        return f"Repetição inválida: {repeat}. Use diario, dias_uteis, semanal, mensal, anual ou dias como 'seg,qua,sex'."
+    if rep_ and rep_ not in ("diario", "semanal", "mensal", "anual", "dias_uteis") and dt.weekday() not in {_WD[d] for d in rep_.split(",")}:
         dt = _next(dt - timedelta(days=1), rep_)  # primeiro dia que bate com os dias pedidos
     items = _load(REMINDERS, [])
     rid = uuid.uuid4().hex[:6]
@@ -130,7 +130,7 @@ def reminder_repeat(reminder: str, repeat: str) -> str:
     """Muda a repetição de um lembrete que já existe (id ou palavra do texto). repeat vazio = só uma vez."""
     rep_ = _repeat_norm(repeat)
     if rep_ is None:
-        return f"Repetição inválida: {repeat}. Use diario, dias_uteis, semanal, mensal ou dias como 'seg,qua,sex'."
+        return f"Repetição inválida: {repeat}. Use diario, dias_uteis, semanal, mensal, anual ou dias como 'seg,qua,sex'."
     items = _load(REMINDERS, [])
     q = _norm(reminder)
     words = [w for w in re.findall(r"\w+", q) if len(w) > 2 and w != "lembrete"]

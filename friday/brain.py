@@ -627,7 +627,7 @@ async def ask(chat_id: int, text: str, heavy: bool = False, spoken: bool = False
             if round_no == MAX_TOOL_ROUNDS:
                 round_schemas = []  # última rodada: só responder
             body = {"model": model, "messages": messages, "stream": False, "think": False, "tools": round_schemas,
-                    "keep_alive": KEEP_ALIVE}
+                    "keep_alive": KEEP_ALIVE, "options": {"num_ctx": config.OLLAMA_NUM_CTX}}
             r = await client.post(f"{config.OLLAMA_URL}/api/chat", json=body)
             r.raise_for_status()
             msg = r.json()["message"]
@@ -702,6 +702,7 @@ async def ask(chat_id: int, text: str, heavy: bool = False, spoken: bool = False
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(f"{config.OLLAMA_URL}/api/chat", json={
                 "model": config.OLLAMA_MODEL, "stream": False, "think": False, "keep_alive": KEEP_ALIVE,
+                "options": {"num_ctx": config.OLLAMA_NUM_CTX},
                 "messages": [{"role": "user", "content": "Reescreva para ser FALADO em voz alta, em português, no"
                               " máximo 3 frases curtas, só o essencial, números arredondados, sem listas nem"
                               " siglas, no mesmo tom. Responda só com o texto final.\n\n" + reply}],
@@ -731,4 +732,5 @@ async def warm_up() -> None:
     """Carrega o modelo na GPU já na inicialização, para a primeira pergunta não demorar."""
     async with httpx.AsyncClient(timeout=300) as client:
         await client.post(f"{config.OLLAMA_URL}/api/generate",
-                          json={"model": config.OLLAMA_MODEL, "prompt": "", "keep_alive": KEEP_ALIVE})
+                          json={"model": config.OLLAMA_MODEL, "prompt": "", "keep_alive": KEEP_ALIVE,
+                                "options": {"num_ctx": config.OLLAMA_NUM_CTX}})
