@@ -49,21 +49,57 @@ def _shortcuts() -> list[Path]:
     return found
 
 
+_apps_cache: tuple[float, list] = (0.0, [])
+
+
+def _apps() -> list[tuple[str, str]]:
+    """(nome, como abrir) de tudo que está no Menu Iniciar, inclusive apps da Microsoft Store (Spotify, WhatsApp...),
+    que não têm atalho .lnk. Vem do Get-StartApps do Windows; guardado por 10 min."""
+    global _apps_cache
+    import json
+    import subprocess
+    import time
+    if time.time() - _apps_cache[0] < 600 and _apps_cache[1]:
+        return _apps_cache[1]
+    apps = [(p.stem, str(p)) for p in _shortcuts()]
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-StartApps | ConvertTo-Json -Compress"],
+                             capture_output=True, text=True, encoding="utf-8", timeout=20,
+                             creationflags=subprocess.CREATE_NO_WINDOW).stdout
+        items = json.loads(out or "[]")
+        items = [items] if isinstance(items, dict) else items
+        known = {_norm(n) for n, _ in apps}
+        apps += [(i["Name"], "shell:AppsFolder\\" + i["AppID"]) for i in items
+                 if i.get("Name") and i.get("AppID") and _norm(i["Name"]) not in known
+                 and "uninstall" not in i["Name"].lower() and "desinstal" not in i["Name"].lower()]
+    except Exception:
+        pass
+    _apps_cache = (time.time(), apps)
+    return apps
+
+
 def open_app(name: str) -> str:
-    q = _norm(name)
-    candidates = [p for p in _shortcuts() if q in _norm(p.stem)]
-    if not candidates:  # tenta palavra por palavra ("davinci" acha "DaVinci Resolve")
-        words = [w for w in q.split() if len(w) > 2]
-        candidates = [p for p in _shortcuts() if words and all(w in _norm(p.stem) for w in words)]
-    if not candidates:
-        return f"Não achei um programa chamado '{name}' no Menu Iniciar."
-    best = min(candidates, key=lambda p: len(p.stem))
-    os.startfile(best)
-    return f"Abrindo {best.stem}."
+    """Abre um programa pelo nome: exato, depois começando com, contendo, e por fim palavra por palavra."""
+    q = _norm(name).strip()
+    apps = _apps()
+    for test in (lambda n: n == q, lambda n: n.startswith(q), lambda n: q in n,
+                 lambda n: all(w in n for w in q.split() if len(w) > 2) and any(len(w) > 2 for w in q.split())):
+        candidates = [(n, how) for n, how in apps if test(_norm(n))]
+        if candidates:
+            break
+    else:
+        return f"Não achei um programa chamado '{name}' no PC."
+    label, how = min(candidates, key=lambda c: len(c[0]))
+    if how.startswith("shell:AppsFolder"):
+        import subprocess
+        subprocess.Popen(["explorer.exe", how], creationflags=subprocess.CREATE_NO_WINDOW)
+    else:
+        os.startfile(how)
+    return f"Abrindo {label}."
 
 
 def list_apps(filter: str = "") -> str:
-    names = sorted({p.stem for p in _shortcuts() if _norm(filter) in _norm(p.stem)})
+    names = sorted({n for n, _ in _apps() if _norm(filter) in _norm(n)})
     return ", ".join(names[:80]) or "Nenhum."
 
 
