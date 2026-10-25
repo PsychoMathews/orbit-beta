@@ -26,7 +26,7 @@ function toast(text, ms = 2600) {
 }
 
 // ---------- Abas ----------
-const TABS_DEFAULT = { main: ['sexta', 'agenda', 'lembretes', 'midia', 'timer'], more: ['avisos', 'ia', 'arquivos', 'notas'] };
+const TABS_DEFAULT = { main: ['sexta', 'agenda', 'lembretes', 'midia', 'timer'], more: ['avisos', 'reuniao', 'ia', 'arquivos', 'notas'] };
 function tabOrder() {
   const t = store.get('orbit.tabs', TABS_DEFAULT), all = [...TABS_DEFAULT.main, ...TABS_DEFAULT.more];
   const main = (t.main || []).filter((x) => all.includes(x)).slice(0, 5), more = all.filter((x) => !main.includes(x));
@@ -643,6 +643,57 @@ function undoToast(text, undo) {
   $('#undo').onclick = () => { tEl.hidden = true; undo(); };
   toast.t = setTimeout(() => { tEl.hidden = true; }, 5000);
 }
+
+// ---------- Gravar reunião (microfone do celular) ----------
+// Vai mandando pedaços de 30 s para o PC enquanto grava (cair a conexão não perde o que já foi); ao parar, a
+// assistente transcreve e resume numa nota do cofre. O iPhone só grava com o app aberto e a tela ligada.
+view({
+  id: 'reuniao', title: 'Reunião', icon: 'mic',
+  mount(el) {
+    el.innerHTML = back() + `<div class="card" style="text-align:center;display:flex;flex-direction:column;gap:16px;align-items:center;padding:28px 20px">
+        <input class="input" id="mt-title" placeholder="Nome da reunião (opcional)" style="width:100%;flex:none;text-align:center">
+        <div class="big-num" id="mt-clock" style="font-size:56px">00:00</div>
+        <div class="faint" id="mt-status">Deixe o app aberto e a tela ligada enquanto grava.</div>
+        <button class="btn round tint" id="mt-go" style="width:96px;height:96px">${icon('mic', 36)}</button>
+      </div>
+      <div class="faint" style="margin:14px 6px;line-height:1.5">Reunião longa ou com o celular no bolso: grave no app <b>Gravador</b> do iPhone e
+        depois toque em Compartilhar → <b>Enviar para Friday</b>. Avise os participantes que está sendo gravado.</div>`;
+    wireBack(el);
+    $('#mt-go', el).onclick = () => (this.rec ? this.stop() : this.start());
+  },
+  async start() {
+    if (!window.MediaRecorder) return toast('Este navegador não grava áudio.');
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } }); } catch { return toast('Sem acesso ao microfone.'); }
+    try { this.lock = await navigator.wakeLock?.request('screen'); } catch {} // tela acesa durante a gravação
+    const type = ['audio/mp4', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t)) || '';
+    this.id = Date.now().toString(36); this.title = $('#mt-title').value.trim(); this.sent = 0; this.pending = [];
+    const rec = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 64000 } : undefined);
+    rec.ondataavailable = (e) => {
+      if (!e.data.size) return;
+      const q = `/meeting/chunk?id=${this.id}&title=${encodeURIComponent(this.title)}`;
+      this.pending.push(api(q, { method: 'POST', body: e.data, headers: { 'Content-Type': e.data.type || type } })
+        .then(() => { this.sent += e.data.size; $('#mt-status').textContent = `Gravando · ${bytes(this.sent)} enviados ao PC`; })
+        .catch(() => { $('#mt-status').textContent = 'Sem conexão: guardando e tento de novo no próximo pedaço.'; }));
+    };
+    rec.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      try { await this.lock?.release(); } catch {}
+      $('#mt-status').textContent = 'Enviando o final…';
+      await Promise.allSettled(this.pending);
+      const r = await post('/meeting/finish', { id: this.id, title: this.title }).catch(() => null);
+      $('#mt-status').textContent = r?.msg || 'Não consegui avisar o PC. Tente de novo com o PC ligado.';
+      $('#mt-go').innerHTML = icon('mic', 36); $('#mt-go').classList.remove('rec');
+    };
+    rec.start(30000); this.rec = rec; this.t0 = Date.now();
+    $('#mt-go').innerHTML = icon('x', 36); $('#mt-go').classList.add('rec');
+    $('#mt-status').textContent = 'Gravando… lembre de avisar os participantes.';
+    clearInterval(this.tick);
+    this.tick = setInterval(() => { const s = Math.floor((Date.now() - this.t0) / 1000); $('#mt-clock').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }, 500);
+  },
+  stop() { clearInterval(this.tick); this.rec?.stop(); this.rec = null; },
+  hide() { /* sair da tela não para a gravação; só fechar o app (o iPhone pausa o microfone) */ },
+});
 
 // ---------- Avisos ----------
 const KIND = { reminder: 'bell', timer: 'timer', meeting: 'calendar', email: 'inbox', render: 'film', claude_done: 'spark', brief: 'spark' };

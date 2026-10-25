@@ -165,7 +165,7 @@ def _person(name: str) -> tuple[str, str] | None:
 _waiting_msg = {"who": "", "t": 0.0}  # "O que eu digo para X?": a resposta seguinte vira a mensagem (por 2 min)
 
 
-def quick(text: str) -> tuple[str, str] | None:
+def quick(text: str) -> tuple | None:
     """(fala, abrir) para pedidos diretos; None = segue para o Claude."""
     import urllib.parse
     from . import spotify
@@ -249,6 +249,9 @@ def quick(text: str) -> tuple[str, str] | None:
         if "premium" in body.lower():
             return "O Spotify disse que precisa de conta Premium para tocar por comando.", "spotify://"
         return "O Spotify recusou o comando agora. Abri o app para você.", "spotify://"
+    # gravar reunião pelo celular: o atalho grava com o microfone do iPhone e manda o arquivo para /api/meeting/file
+    if re.search(r"\bgrav(a|ar|e)\b.*\breuni|\bgrava(r)? (isso|aqui|a conversa)", t, re.I):
+        return "Gravando pelo celular. Toque em parar quando a reunião acabar.", "", True
     # abrir app
     m = re.match(r"^(?:abre|abrir|abra|abri)\s+(?:o\s+|a\s+)?(?P<app>[\wÀ-ÿ ]+?)$", t, re.I)
     if m:
@@ -450,7 +453,7 @@ async def _guard(request: web.Request, handler):
         return await handler(request)
     if (request.path == "/api/siri" and request.method == "GET") or request.path.startswith("/api/siri-audio/"):
         return await handler(request)  # o áudio tem nome aleatório de uso único (vale 10 min): basta como senha
-    if request.path == "/api/siri":  # Atalho da Siri: senha própria no cabeçalho, sem cookie
+    if request.path in ("/api/siri", "/api/meeting/file"):  # Atalhos do iPhone: senha própria no cabeçalho, sem cookie
         if secrets.compare_digest(request.headers.get("X-Orbit-Token", ""), _load().get("siri_token") or "-"):
             return await handler(request)
         return web.json_response({"fala": "O atalho está com a senha errada. Pegue a senha nova nos Ajustes do Orbit."}, status=401)
@@ -602,6 +605,8 @@ async def siri(request: web.Request) -> web.Response:
         out = {"fala": hit[0], **_asks(hit[0])}
         if hit[1]:
             out["abrir"] = hit[1]
+        if len(hit) > 2 and hit[2]:  # "grava a reunião": o próprio atalho grava pelo microfone do iPhone
+            out["gravar"] = "sim"
         if b.get("voz"):
             audio = await _siri_voice(hit[0], request.headers.get("X-Forwarded-Host") or request.host)
             if audio:
@@ -920,6 +925,45 @@ def save_upload(name: str, data: bytes) -> Path:
     return dest
 
 
+async def meeting_chunk(request: web.Request) -> web.Response:
+    """Pedaço da gravação de reunião feita no app (a cada ~30 s): vai sendo juntado no PC, nada se perde se cair."""
+    from . import meetings
+    folder = await asyncio.to_thread(meetings.phone_folder, request.query.get("id", ""), request.query.get("title", ""))
+    ext = {"audio/mp4": "m4a", "audio/webm": "webm", "audio/x-caf": "caf"}.get(request.content_type, "m4a")
+    data = await request.read()
+    with (folder / f"celular.{ext}").open("ab") as f:
+        f.write(data)
+    return web.json_response({"ok": True, "bytes": len(data)})
+
+
+async def meeting_finish(request: web.Request) -> web.Response:
+    from . import meetings
+    b = await request.json()
+    folder = await asyncio.to_thread(meetings.phone_folder, str(b.get("id", "")), str(b.get("title", "")))
+    title = folder.name.split(" ", 2)[-1].split("__")[0]
+    meetings.process_phone(folder, title)
+    return web.json_response({"ok": True, "msg": f"Recebi a gravação de '{title}'. Vou transcrever e resumir; te aviso quando a nota estiver no cofre."})
+
+
+async def meeting_file(request: web.Request) -> web.Response:
+    """Arquivo inteiro (Gravador do iPhone → Compartilhar → atalho "Enviar para Friday"): corpo cru ou multipart."""
+    from . import meetings
+    title = request.query.get("title") or "Gravação do celular"
+    folder = await asyncio.to_thread(meetings.phone_folder, secrets.token_hex(6), title)
+    if request.content_type.startswith("multipart/"):
+        reader = await request.multipart()
+        part = await reader.next()
+        name = (part.filename or "audio.m4a") if part else "audio.m4a"
+        data = await part.read(decode=False) if part else b""
+    else:
+        name, data = "audio.m4a", await request.read()
+    if len(data) < 2000:
+        return web.json_response({"fala": "O áudio chegou vazio."}, status=400)
+    (folder / f"celular{Path(name).suffix or '.m4a'}").write_bytes(data)
+    meetings.process_phone(folder, title)
+    return web.json_response({"fala": "Recebi a gravação. Te aviso quando o resumo estiver pronto."})
+
+
 async def upload(request: web.Request) -> web.Response:
     """Arquivos do app Arquivos do iPhone -> Downloads\\Do celular, e um aviso na ilha do PC."""
     UPLOADS.mkdir(parents=True, exist_ok=True)
@@ -1042,6 +1086,9 @@ async def start() -> None:
     r.add_get("/api/files", files_get)
     r.add_get("/api/file", file_get)
     r.add_post("/api/upload", upload)
+    r.add_post("/api/meeting/chunk", meeting_chunk)
+    r.add_post("/api/meeting/finish", meeting_finish)
+    r.add_post("/api/meeting/file", meeting_file)
     r.add_get("/", static)
     r.add_get("/{path:.*}", static)
     runner = web.AppRunner(app, access_log=None)

@@ -120,6 +120,38 @@ def _say(text: str) -> None:
         asyncio.run_coroutine_threadsafe(_notify(text, None, kind="meeting"), _loop)
 
 
+# ---------- Gravação feita no celular (app Orbit ou Gravador do iPhone) ----------
+
+def phone_folder(rec_id: str, title: str) -> Path:
+    """Pasta da gravação do celular (o app manda pedaços com o mesmo id)."""
+    rec_id = "".join(c for c in rec_id if c.isalnum())[:24] or str(int(time.time()))
+    found = next(ROOT.glob(f"*__{rec_id}"), None) if ROOT.exists() else None
+    if found:
+        return found
+    title = "".join(c for c in (title or "Reunião") if c not in chr(92) + '/:*?"<>|').strip()[:80] or "Reunião"
+    folder = ROOT / f"{datetime.now(TZ):%Y-%m-%d %H%M} {title}__{rec_id}"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def process_phone(folder: Path, title: str) -> None:
+    """Áudio do celular (m4a/mp4/webm/caf...) vira mic.wav e segue o mesmo caminho da gravação do PC."""
+    def run():
+        src = next((p for p in folder.iterdir() if p.stem == "celular"), None)
+        if not src:
+            _say(f"⚠️ A gravação de '{title}' não chegou do celular.")
+            return
+        try:
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-ac", "1", "-ar", str(RATE), str(folder / "mic.wav")],
+                           check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        except Exception:
+            log.exception("Reunião: áudio do celular não converteu")
+            _say(f"⚠️ Não consegui ler o áudio de '{title}' que veio do celular.")
+            return
+        _process(folder, title)
+    threading.Thread(target=run, daemon=True).start()
+
+
 def _process(folder: Path, title: str) -> None:
     """Mistura, transcreve e resume. Roda numa thread (pode levar vários minutos)."""
     try:
@@ -142,7 +174,7 @@ def _process(folder: Path, title: str) -> None:
         (folder / "transcricao.txt").write_text(transcript, encoding="utf-8")
         summary = _summarize(title, transcript)
         NOTES.mkdir(parents=True, exist_ok=True)
-        note = NOTES / f"{folder.name}.md"
+        note = NOTES / f"{folder.name.split('__')[0]}.md"
         note.write_text(f"# {title}\n\n{datetime.now(TZ):%d/%m/%Y}\n\n{summary}\n\n## Transcrição\n\n{transcript}\n", encoding="utf-8")
         first = next((l.strip("-• ") for l in summary.splitlines() if l.strip() and not l.startswith("#")), "")
         _say(f"📝 Nota da reunião '{title}' pronta no cofre (Reuniões). {first[:160]}")

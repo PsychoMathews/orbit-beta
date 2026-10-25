@@ -212,3 +212,5 @@ a.btn, a.item { color: var(--fg); text-decoration: none; -webkit-tap-highlight-c
 
 .steps { margin: 0; padding-left: 20px; color: var(--dim); font-size: 13.5px; line-height: 1.5; }
 .steps li { margin-bottom: 8px; } .steps b { color: var(--fg); font-weight: 600; }
+
+#mt-go.rec { background: var(--bad); box-shadow: 0 0 0 8px rgba(255, 90, 90, .2); animation: pulse 1.2s infinite; }
