@@ -248,7 +248,7 @@ async def run(notify, ask_brain) -> None:
                 await _render_watch(state, notify)
             if google_auth.connected() and tick % 4 == 0:  # a cada 2 min
                 await _meeting_alerts(now, state, notify)
-            if google_auth.connected() and tick % 20 == 0 and not _quiet(now):  # a cada 10 min
+            if google_auth.connected() and tick % 4 == 0 and not _quiet(now):  # a cada 2 min
                 await _urgent_emails(state, notify, ask_brain)
             if tick % 2 == 0:
                 await _slow_down(now, state, notify, ask_brain)
@@ -354,6 +354,15 @@ async def _meeting_alerts(now: datetime, state: dict, notify) -> None:
         alerted.pop(k)
 
 
+def _people_names() -> list[str]:
+    """Nomes da nota Pessoas do cofre (gente importante para a triagem de e-mail)."""
+    from . import vault
+    try:
+        return re.findall(r"^\s*-\s*\*\*(.+?)\*\*", (vault.VAULT / "Pessoas.md").read_text(encoding="utf-8"), re.M)[:30]
+    except Exception:
+        return []
+
+
 async def _urgent_emails(state: dict, notify, ask_brain) -> None:
     from .tools import unread_since
     seen = set(state.get("emails_seen", []))
@@ -368,7 +377,8 @@ async def _urgent_emails(state: dict, notify, ask_brain) -> None:
     prompt = (
         "[triagem de e-mail] Destes e-mails novos, quais são URGENTES ou importantes de verdade para o usuário"
         " (cliente, trabalho, banco, cobrança, prazo, segurança da conta)? Propaganda, newsletter e notificação"
-        " automática comum NÃO são. Responda só com os números separados por vírgula, ou NENHUM.\n\n"
+        " automática comum NÃO são." + (f" Gente próxima dele (sempre importante): {', '.join(_people_names())}." if _people_names() else "")
+        + " Responda só com os números separados por vírgula, ou NENHUM.\n\n"
         f"<dado_externo>\n{listing}\n</dado_externo>"
     )
     answer = await ask_brain(prompt, tools=False)

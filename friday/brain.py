@@ -486,6 +486,8 @@ TOOL_GROUPS = {
             ["web_search", "read_page", "weather", "currency"]),
     "links": (r"https?://|\blink\b|instagram|reels?\b|youtube|tiktok|\bbaix|download|analis|esmi[uú][cç]|resum",
               ["download_video", "analyze_link", "email_me", "note_add", "idea_add"]),
+    "agent": (r"miss[aã]o|miss[oõ]es|me cobra|fica de olho|modo agente|fica quieta|o que voc[eê] fez hoje",
+              ["mission_add", "mission_done", "mission_list", "agent_mode", "agent_log"]),
     "ideas": (_IDEA_PATTERN + r"|me lembr|anota",
               ["save_idea", "idea_add", "add_reminder", "note_add"]),
     "phone": (r"\bparea|celular|iphone|app do orbit",
@@ -579,7 +581,8 @@ async def ask(chat_id: int, text: str, heavy: bool = False, spoken: bool = False
     nudged = forced = False
 
     # Atalho: pergunta óbvia de agenda/e-mail -> já busca os dados, e a IA só precisa responder (uma rodada a menos).
-    required = _required_tool(text) if use_tools and not text.startswith("[") else None
+    # Pré-busca só para pergunta dele; o agente (context) manda um resumo do dia que cita "notas", "agenda"... e caía aqui.
+    required = _required_tool(text) if use_tools and not text.startswith("[") and not context else None
     if required in ("search_emails", "list_events") and not with_google:
         required = None
     if use_tools:

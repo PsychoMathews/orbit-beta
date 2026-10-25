@@ -9,7 +9,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
-from . import alexa, brain, claude_agent, config, delivery, vault, desktop, gamemode, hub, memory, mobile, orbit, winsys, proactive, tools, voice
+from . import agent, alexa, brain, claude_agent, config, delivery, vault, desktop, gamemode, hub, memory, mobile, orbit, winsys, proactive, tools, voice
 from .paths import MEMORIA
 from . import assistente
 from .assistente import personalizar
@@ -283,6 +283,7 @@ async def _on_startup(app) -> None:
         await winsys.run(notify)
         claude_agent.set_notifier(asyncio.get_running_loop(), notify)  # avisa quando o Claude terminar
         asyncio.get_running_loop().create_task(vault.run(notify))  # revisão da noite: aprende com o dia
+        asyncio.get_running_loop().create_task(agent.run(notify))  # modo agente: acompanha o dia e chama quando vale
         if app:
             delivery.set_sender(asyncio.get_running_loop(), app.bot, config.OWNER_ID)  # arquivos e prints no Telegram
     if True:
